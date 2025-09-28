@@ -1,0 +1,19 @@
+Package: borgworld
+Title: Easy, Nicer-Output Stats Helpers
+Version: 0.1.0
+Authors@R: 
+    person("Steve", "Borgatti", email = "sborgatti@uky.edu", role = c("aut","cre"))
+Description: Small, prefix-based helpers (b*) that provide simpler syntax
+    and cleaner output for common statistical tasks.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Depends: R (>= 4.1.0)
+Imports:
+    dplyr,
+    ggplot2,
+    rlang,
+    tidyr
+URL: https://github.com/StephenBorgatti/borgworld
+BugReports: https://github.com/StephenBorgatti/borgworld/issues
