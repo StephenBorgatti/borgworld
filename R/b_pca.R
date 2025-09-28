@@ -68,6 +68,8 @@
 #' Hair, J. F., Black, W. C., Babin, B. J., & Anderson, R. E. (2019).
 #' Multivariate Data Analysis (8th ed.). Cengage Learning.
 #'
+#' @importFrom stats cor sd eigen
+#' @importFrom utils capture.output
 #' @export
 bpca <- function(data, n_components = NULL, standardize_scores = TRUE) {
   # Convert to matrix
@@ -87,30 +89,42 @@ bpca <- function(data, n_components = NULL, standardize_scores = TRUE) {
   }
 
   # Standardize data using sample standard deviation (n-1)
-  # This is what both Stata and SPSS do internally for correlation matrix
   X_std <- scale(X, center = TRUE, scale = TRUE)
 
-  # Method 1: Using eigen decomposition of correlation matrix (most transparent)
-  R <- cor(X)  # This uses n-1
+  # Using eigen decomposition of correlation matrix
+  R <- cor(X)
   eigen_decomp <- eigen(R)
 
   # Extract eigenvalues and eigenvectors
   eigenvalues <- eigen_decomp$values[1:n_components]
-  eigenvectors <- eigen_decomp$vectors[, 1:n_components, drop = FALSE]
+  names(eigenvalues) <- paste0("PC", 1:n_components)
 
-  # CRITICAL: Compute loadings as correlations (what social scientists expect)
-  # Loadings = eigenvectors * sqrt(eigenvalues)
+  eigenvectors <- eigen_decomp$vectors[, 1:n_components, drop = FALSE]
+  rownames(eigenvectors) <- var_names
+  colnames(eigenvectors) <- paste0("PC", 1:n_components)
+
+  # Compute loadings as correlations (what social scientists expect)
   loadings <- matrix(NA, nrow = p, ncol = n_components)
   for (i in 1:n_components) {
     loadings[, i] <- eigenvectors[, i] * sqrt(eigenvalues[i])
   }
+  rownames(loadings) <- var_names
+  colnames(loadings) <- paste0("PC", 1:n_components)
 
   # Compute scores
   scores_raw <- X_std %*% eigenvectors
+  colnames(scores_raw) <- paste0("PC", 1:n_components)
+  if (!is.null(rownames(X))) {
+    rownames(scores_raw) <- rownames(X)
+  }
 
-  # Standardize scores if requested (Stata default)
+  # Standardize scores if requested
   if (standardize_scores) {
     scores <- scale(scores_raw, center = FALSE, scale = TRUE)
+    colnames(scores) <- paste0("PC", 1:n_components)
+    if (!is.null(rownames(X))) {
+      rownames(scores) <- rownames(X)
+    }
     scores_label <- "Standardized Component Scores (variance = 1)"
   } else {
     scores <- scores_raw
@@ -118,14 +132,15 @@ bpca <- function(data, n_components = NULL, standardize_scores = TRUE) {
   }
 
   # Compute variance explained
-  total_variance <- sum(eigen_decomp$values)  # Should equal p
+  total_variance <- sum(eigen_decomp$values)
   prop_variance <- eigenvalues / total_variance
   cum_variance <- cumsum(prop_variance)
 
-  # Compute communalities (sum of squared loadings for each variable)
+  # Compute communalities
   communalities <- rowSums(loadings^2)
+  names(communalities) <- var_names
 
-  # Create nice output tables
+  # Create output tables
   cat("===============================================\n")
   cat("PCA RESULTS (Stata/SPSS Style Output)\n")
   cat("===============================================\n\n")
@@ -146,14 +161,10 @@ bpca <- function(data, n_components = NULL, standardize_scores = TRUE) {
   n_kaiser <- sum(eigenvalues > 1)
   cat(paste("Components with eigenvalue > 1 (Kaiser criterion):", n_kaiser, "\n\n"))
 
-  # Loadings matrix (correlations)
+  # Loadings matrix
   cat("COMPONENT LOADINGS (Variable-Component Correlations)\n")
   cat("----------------------------------------------------\n")
-  loadings_df <- data.frame(loadings)
-  colnames(loadings_df) <- paste0("PC", 1:n_components)
-  rownames(loadings_df) <- var_names
-
-  # Show first 10 variables or all if fewer
+  loadings_df <- as.data.frame(loadings)
   n_show <- min(10, p)
   print(round(loadings_df[1:n_show, , drop = FALSE], 3))
   if (p > 10) cat("... [", p - 10, " more variables]\n", sep = "")
@@ -183,18 +194,17 @@ bpca <- function(data, n_components = NULL, standardize_scores = TRUE) {
   print(score_summary, row.names = FALSE)
   cat("\n")
 
-  # Verification of loadings
+  # Verification
   cat("VERIFICATION\n")
   cat("------------\n")
-  # Check that loadings are indeed correlations
   actual_cor <- cor(X_std[, 1], scores_raw[, 1])
   expected_cor <- loadings[1, 1]
-  cat("Correlation between Var1 and PC1:\n")
+  cat("Correlation between", var_names[1], "and PC1:\n")
   cat("  Computed from data: ", round(actual_cor, 4), "\n")
   cat("  From loadings matrix: ", round(expected_cor, 4), "\n")
   cat("  Match: ", ifelse(abs(actual_cor - expected_cor) < 0.001, "YES", "NO"), "\n\n")
 
-  # Return results
+  # Return results with all names properly set
   result <- list(
     eigenvalues = eigenvalues,
     variance_explained = data.frame(
@@ -203,8 +213,8 @@ bpca <- function(data, n_components = NULL, standardize_scores = TRUE) {
       prop_variance = prop_variance,
       cum_variance = cum_variance
     ),
-    loadings = loadings,  # The correlations (what social scientists want)
-    eigenvectors = eigenvectors,  # The raw coefficients (for reference)
+    loadings = loadings,
+    eigenvectors = eigenvectors,
     scores = scores,
     scores_raw = scores_raw,
     communalities = communalities,
@@ -214,87 +224,4 @@ bpca <- function(data, n_components = NULL, standardize_scores = TRUE) {
 
   class(result) <- "bpca"
   invisible(result)
-}
-
-#' Compare borgworld PCA with R's Native Functions
-#'
-#' @description
-#' Compares the results from \code{bpca} with R's built-in
-#' PCA functions to demonstrate the differences in terminology and scaling
-#' conventions between statistical computing and social science software.
-#'
-#' @param result An object of class \code{bpca} from \code{\link{bpca}}
-#' @param data The original data matrix or data frame used in the PCA
-#'
-#' @return Invisibly returns a list containing the comparison results.
-#'   The function is primarily called for its side effect of printing
-#'   a detailed comparison to the console.
-#'
-#' @details
-#' This function demonstrates how to convert between R's PCA conventions
-#' and social science conventions:
-#'
-#' \itemize{
-#'   \item R's \code{prcomp} returns eigenvectors as "rotation"
-#'   \item Social science "loadings" = R's rotation * sqrt(eigenvalues)
-#'   \item R's scores have variance = eigenvalue
-#'   \item Standardized scores = R's scores / sqrt(eigenvalue)
-#' }
-#'
-#' @examples
-#' # Create example data
-#' set.seed(123)
-#' data <- matrix(rnorm(100 * 5), nrow = 100, ncol = 5)
-#'
-#' # Run borgworld PCA
-#' result <- bpca(data, n_components = 3)
-#'
-#' # Compare with R's native functions
-#' bcompare_pca(result, data)
-#'
-#' @seealso \code{\link{bpca}}
-#'
-#' @export
-bcompare_pca <- function(result, data) {
-  # Check input class
-  if (!inherits(result, "bpca")) {
-    stop("result must be of class 'bpca' from bpca()")
-  }
-
-  cat("\n===============================================\n")
-  cat("COMPARISON WITH R FUNCTIONS\n")
-  cat("===============================================\n\n")
-
-  # Run prcomp
-  pca_r <- prcomp(data, scale. = TRUE, center = TRUE)
-
-  cat("What R's prcomp() calls things:\n")
-  cat("--------------------------------\n")
-  cat("- 'rotation' = eigenvectors (our raw coefficients)\n")
-  cat("- 'sdev' = sqrt(eigenvalues)\n")
-  cat("- 'x' = raw scores (variance = eigenvalue)\n\n")
-
-  cat("To get social science style output from prcomp:\n")
-  cat("-----------------------------------------------\n")
-  cat("loadings = pca$rotation %*% diag(pca$sdev)\n")
-  cat("standardized_scores = pca$x %*% diag(1/pca$sdev)\n\n")
-
-  # Show the conversion
-  n_show <- min(3, ncol(result$loadings))
-  r_loadings <- pca_r$rotation[, 1:n_show] %*% diag(pca_r$sdev[1:n_show])
-
-  cat("First 3 variables, PC1 loadings:\n")
-  comparison <- data.frame(
-    Our_Loadings = round(result$loadings[1:3, 1], 4),
-    R_Converted = round(r_loadings[1:3, 1], 4),
-    R_Raw = round(pca_r$rotation[1:3, 1], 4)
-  )
-  rownames(comparison) <- rownames(result$loadings)[1:3]
-  print(comparison)
-
-  invisible(list(
-    comparison_table = comparison,
-    r_pca = pca_r,
-    r_loadings_converted = r_loadings
-  ))
 }
