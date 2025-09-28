@@ -29,3 +29,5 @@ gert::git_push()
 # - Click "Commit"
 # - Write message and commit
 # - Click "Push" (green arrow)
+# This will push your clean history to GitHub
+usethis::use_github()
