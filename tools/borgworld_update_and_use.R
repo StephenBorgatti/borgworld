@@ -18,7 +18,7 @@ bmean <- function(x, ...) mean(x, na.rm = TRUE, ...)
 # Then run:
 if (requireNamespace("devtools", quietly = TRUE)) {
   devtools::document()    # regenerates NAMESPACE + Rd
-  # devtools::check()     # optional
+  devtools::check()     # optional
   devtools::install()     # installs into your user library
 } else {
   install.packages("devtools")

@@ -17,7 +17,7 @@
 #'   \item{stress}{Stress measure}
 #'
 #' @importFrom stats cmdscale dist
-#' @importFrom graphics plot text
+#' @importFrom graphics plot text grid abline
 #' @export
 #'
 #' @examples
@@ -30,7 +30,7 @@
 #'
 bclassicalmds <- function(x, type = c("s", "d"), k = 2, add = FALSE,
                           plot = TRUE, labels = NULL) {
-
+  # [Rest of function body remains the same as before]
   # Check inputs
   type <- match.arg(type)
 
@@ -166,6 +166,7 @@ bclassicalmds <- function(x, type = c("s", "d"), k = 2, add = FALSE,
 #' @param x A bmds object
 #' @param ... Additional arguments (ignored)
 #'
+#' @importFrom utils head
 #' @export
 #' @method print bmds
 print.bmds <- function(x, ...) {

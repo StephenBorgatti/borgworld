@@ -26,13 +26,14 @@
 #' @examples
 #' # Create example data
 #' set.seed(123)
-#' data <- matrix(rnorm(100 * 5), nrow = 100, ncol = 5)
+#' data <- as.data.frame(matrix(rnorm(100 * 5), nrow = 100, ncol = 5))
+#' colnames(data) <- paste0("Var", 1:5)
 #'
 #' # Run borgworld PCA
-#' result <- bpca(data, n_components = 3)
+#' result <- bpca(data)  # No n_components parameter
 #'
-#' # Compare with R's native functions
-#' bcompare_pca(result, data)
+#' # Or if you want to specify which components to plot:
+#' result <- bpca(data, choices = c(1, 3))
 #'
 #' @seealso \code{\link{bpca}}
 #' @importFrom stats prcomp

@@ -2,80 +2,33 @@
 % Please edit documentation in R/b_pca.R
 \name{bpca}
 \alias{bpca}
-\title{Perform PCA with Social Science Conventions}
+\title{Principal Component Analysis with Biplot}
 \usage{
-bpca(data, n_components = NULL, standardize_scores = TRUE)
+bpca(data, id = NULL, scale = TRUE, plot = TRUE, choices = c(1, 2))
 }
 \arguments{
-\item{data}{A numeric matrix or data frame containing the variables to analyze}
+\item{data}{A data frame containing numeric variables for PCA}
 
-\item{n_components}{Integer; number of components to retain.
-Default is NULL (returns all components)}
+\item{id}{Character string naming the column to use as labels (optional)}
 
-\item{standardize_scores}{Logical; if TRUE (default), standardizes component
-scores to have variance = 1 (matching Stata's default behavior).
-If FALSE, returns raw scores with variance equal to eigenvalues.}
+\item{scale}{Logical, whether to scale variables to unit variance (default = TRUE)}
+
+\item{plot}{Logical, whether to produce a biplot (default = TRUE)}
+
+\item{choices}{Numeric vector of length 2 indicating which PCs to plot (default = c(1,2))}
 }
 \value{
-An object of class \code{bpca} containing:
-\item{eigenvalues}{Numeric vector of eigenvalues of the correlation matrix}
-\item{variance_explained}{Data frame with variance explained by each component}
-\item{loadings}{Matrix of component loadings (correlations between variables and PCs)}
-\item{eigenvectors}{Matrix of raw eigenvectors (component coefficients)}
-\item{scores}{Matrix of component scores (standardized or raw based on parameter)}
-\item{scores_raw}{Matrix of raw component scores (always unstandardized)}
-\item{communalities}{Numeric vector of communalities for each variable}
-\item{correlation_matrix}{The correlation matrix used for PCA}
-\item{standardized_data}{The standardized data matrix}
+An object of class "bpca" containing the prcomp results
 }
 \description{
-Performs Principal Component Analysis and returns results in the format
-expected by social scientists familiar with Stata/SPSS conventions.
-Unlike R's built-in functions, this returns loadings as correlations
-between variables and components, and can optionally standardize scores.
-}
-\details{
-This function bridges the gap between R's PCA implementations and the
-conventions used in social science software like Stata and SPSS:
-
-\itemize{
-\item Loadings are computed as eigenvector * sqrt(eigenvalue), giving
-correlations between variables and components
-\item Scores are standardized by default to have unit variance
-\item Output includes communalities and Kaiser criterion
-\item Terminology matches social science conventions
-}
-
-The function uses the correlation matrix (variables standardized with n-1)
-which is standard in both R and Stata/SPSS for correlation-based PCA.
+Performs PCA and creates a biplot with optional ID labels
 }
 \examples{
-# Create example data with correlation structure
-set.seed(123)
-n <- 100
-data <- matrix(rnorm(n * 5), nrow = n, ncol = 5)
-colnames(data) <- paste0("Var", 1:5)
-data[, 2] <- data[, 1] * 0.7 + rnorm(n) * 0.5
-data[, 3] <- data[, 1] * 0.4 + data[, 2] * 0.4 + rnorm(n) * 0.5
+# Without ID variable
+bpca(iris[,1:4])
 
-# Run PCA with standardized scores (default)
-result <- bpca(data, n_components = 3)
+# With ID variable - exclude it from PCA but use for labels
+data_with_id <- cbind(id = paste0("S", 1:150), iris[,1:4])
+bpca(data_with_id, id = "id")
 
-# Access loadings (correlations)
-result$loadings
-
-# Run PCA with raw scores
-result_raw <- bpca(data, n_components = 3, standardize_scores = FALSE)
-
-}
-\references{
-Jolliffe, I. T. (2002). Principal Component Analysis (2nd ed.). Springer.
-
-Hair, J. F., Black, W. C., Babin, B. J., & Anderson, R. E. (2019).
-Multivariate Data Analysis (8th ed.). Cengage Learning.
-}
-\seealso{
-\code{\link{prcomp}} for R's SVD-based PCA implementation,
-\code{\link{princomp}} for R's eigen-based PCA implementation,
-\code{\link{bcompare_pca}} for converting between R and social science conventions
 }

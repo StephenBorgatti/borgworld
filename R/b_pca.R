@@ -1,228 +1,218 @@
-#' Perform PCA with Social Science Conventions
+#' Principal Component Analysis with Biplot
 #'
-#' @description
-#' Performs Principal Component Analysis and returns results in the format
-#' expected by social scientists familiar with Stata/SPSS conventions.
-#' Unlike R's built-in functions, this returns loadings as correlations
-#' between variables and components, and can optionally standardize scores.
+#' Performs PCA and creates a biplot with optional ID labels
 #'
-#' @param data A numeric matrix or data frame containing the variables to analyze
-#' @param n_components Integer; number of components to retain.
-#'   Default is NULL (returns all components)
-#' @param standardize_scores Logical; if TRUE (default), standardizes component
-#'   scores to have variance = 1 (matching Stata's default behavior).
-#'   If FALSE, returns raw scores with variance equal to eigenvalues.
+#' @param data A data frame containing numeric variables for PCA
+#' @param id Character string naming the column to use as labels (optional)
+#' @param scale Logical, whether to scale variables to unit variance (default = TRUE)
+#' @param plot Logical, whether to produce a biplot (default = TRUE)
+#' @param choices Numeric vector of length 2 indicating which PCs to plot (default = c(1,2))
 #'
-#' @return An object of class \code{bpca} containing:
-#' \item{eigenvalues}{Numeric vector of eigenvalues of the correlation matrix}
-#' \item{variance_explained}{Data frame with variance explained by each component}
-#' \item{loadings}{Matrix of component loadings (correlations between variables and PCs)}
-#' \item{eigenvectors}{Matrix of raw eigenvectors (component coefficients)}
-#' \item{scores}{Matrix of component scores (standardized or raw based on parameter)}
-#' \item{scores_raw}{Matrix of raw component scores (always unstandardized)}
-#' \item{communalities}{Numeric vector of communalities for each variable}
-#' \item{correlation_matrix}{The correlation matrix used for PCA}
-#' \item{standardized_data}{The standardized data matrix}
+#' @return An object of class "bpca" containing the prcomp results
 #'
-#' @details
-#' This function bridges the gap between R's PCA implementations and the
-#' conventions used in social science software like Stata and SPSS:
-#'
-#' \itemize{
-#'   \item Loadings are computed as eigenvector * sqrt(eigenvalue), giving
-#'     correlations between variables and components
-#'   \item Scores are standardized by default to have unit variance
-#'   \item Output includes communalities and Kaiser criterion
-#'   \item Terminology matches social science conventions
-#' }
-#'
-#' The function uses the correlation matrix (variables standardized with n-1)
-#' which is standard in both R and Stata/SPSS for correlation-based PCA.
+#' @importFrom stats prcomp cor
+#' @importFrom graphics plot arrows text par
+#' @export
 #'
 #' @examples
-#' # Create example data with correlation structure
-#' set.seed(123)
-#' n <- 100
-#' data <- matrix(rnorm(n * 5), nrow = n, ncol = 5)
-#' colnames(data) <- paste0("Var", 1:5)
-#' data[, 2] <- data[, 1] * 0.7 + rnorm(n) * 0.5
-#' data[, 3] <- data[, 1] * 0.4 + data[, 2] * 0.4 + rnorm(n) * 0.5
+#' # Without ID variable
+#' bpca(iris[,1:4])
 #'
-#' # Run PCA with standardized scores (default)
-#' result <- bpca(data, n_components = 3)
+#' # With ID variable - exclude it from PCA but use for labels
+#' data_with_id <- cbind(id = paste0("S", 1:150), iris[,1:4])
+#' bpca(data_with_id, id = "id")
 #'
-#' # Access loadings (correlations)
-#' result$loadings
-#'
-#' # Run PCA with raw scores
-#' result_raw <- bpca(data, n_components = 3, standardize_scores = FALSE)
-#'
-#' @seealso
-#' \code{\link{prcomp}} for R's SVD-based PCA implementation,
-#' \code{\link{princomp}} for R's eigen-based PCA implementation,
-#' \code{\link{bcompare_pca}} for converting between R and social science conventions
-#'
-#' @references
-#' Jolliffe, I. T. (2002). Principal Component Analysis (2nd ed.). Springer.
-#'
-#' Hair, J. F., Black, W. C., Babin, B. J., & Anderson, R. E. (2019).
-#' Multivariate Data Analysis (8th ed.). Cengage Learning.
-#'
-#' @importFrom stats cor sd
-#' @importFrom utils capture.output
-#' @export
-bpca <- function(data, n_components = NULL, standardize_scores = TRUE) {
-  # Convert to clean matrix
-  data <- bclean(data)
-  X <- as.matrix(data)
-  n <- nrow(X)
-  p <- ncol(X)
+bpca <- function(data, id = NULL, scale = TRUE, plot = TRUE, choices = c(1, 2)) {
 
-  # Get variable names
-  if (is.null(colnames(X))) {
-    colnames(X) <- paste0("Var", 1:p)
-  }
-  var_names <- colnames(X)
+  # Store original data
+  original_data <- data
 
-  # Default to all components
-  if (is.null(n_components)) {
-    n_components <- min(n - 1, p)
-  }
-
-  # Standardize data using sample standard deviation (n-1)
-  X_std <- scale(X, center = TRUE, scale = TRUE)
-
-  # Using eigen decomposition of correlation matrix
-  R <- cor(X)
-  eigen_decomp <- eigen(R)
-
-  # Extract eigenvalues and eigenvectors
-  eigenvalues <- eigen_decomp$values[1:n_components]
-  names(eigenvalues) <- paste0("PC", 1:n_components)
-
-  eigenvectors <- eigen_decomp$vectors[, 1:n_components, drop = FALSE]
-  rownames(eigenvectors) <- var_names
-  colnames(eigenvectors) <- paste0("PC", 1:n_components)
-
-  # Compute loadings as correlations (what social scientists expect)
-  loadings <- matrix(NA, nrow = p, ncol = n_components)
-  for (i in 1:n_components) {
-    loadings[, i] <- eigenvectors[, i] * sqrt(eigenvalues[i])
-  }
-  rownames(loadings) <- var_names
-  colnames(loadings) <- paste0("PC", 1:n_components)
-
-  # Compute scores
-  scores_raw <- X_std %*% eigenvectors
-  colnames(scores_raw) <- paste0("PC", 1:n_components)
-  if (!is.null(rownames(X))) {
-    rownames(scores_raw) <- rownames(X)
-  }
-
-  # Standardize scores if requested
-  if (standardize_scores) {
-    scores <- scale(scores_raw, center = FALSE, scale = TRUE)
-    colnames(scores) <- paste0("PC", 1:n_components)
-    if (!is.null(rownames(X))) {
-      rownames(scores) <- rownames(X)
+  # Handle id variable
+  labels <- NULL
+  if (!is.null(id)) {
+    if (!(id %in% names(data))) {
+      stop(paste("Column", id, "not found in data"))
     }
-    scores_label <- "Standardized Component Scores (variance = 1)"
-  } else {
-    scores <- scores_raw
-    scores_label <- "Raw Component Scores (variance = eigenvalue)"
+    # Extract labels before removing from data
+    labels <- data[[id]]
+    # Remove id column from data for PCA
+    data <- data[, names(data) != id, drop = FALSE]
   }
 
-  # Compute variance explained
-  total_variance <- sum(eigen_decomp$values)
-  prop_variance <- eigenvalues / total_variance
-  cum_variance <- cumsum(prop_variance)
+  # Check that remaining columns are numeric
+  numeric_cols <- sapply(data, is.numeric)
+  if (!all(numeric_cols)) {
+    non_numeric <- names(data)[!numeric_cols]
+    warning(paste("Removing non-numeric columns:", paste(non_numeric, collapse = ", ")))
+    data <- data[, numeric_cols, drop = FALSE]
+  }
 
-  # Compute communalities
-  communalities <- rowSums(loadings^2)
-  names(communalities) <- var_names
+  # Check for sufficient numeric columns
+  if (ncol(data) < 2) {
+    stop("Need at least 2 numeric variables for PCA")
+  }
 
-  # Create output tables
-  cat("===============================================\n")
-  cat("PCA RESULTS (Stata/SPSS Style Output)\n")
-  cat("===============================================\n\n")
+  # Remove any rows with missing values
+  complete_rows <- complete.cases(data)
+  if (sum(!complete_rows) > 0) {
+    warning(paste("Removing", sum(!complete_rows), "rows with missing values"))
+    data <- data[complete_rows, , drop = FALSE]
+    if (!is.null(labels)) {
+      labels <- labels[complete_rows]
+    }
+  }
 
-  # Eigenvalues table
-  cat("EIGENVALUES AND VARIANCE EXPLAINED\n")
-  cat("-----------------------------------\n")
-  eigen_table <- data.frame(
-    Component = paste0("PC", 1:n_components),
-    Eigenvalue = round(eigenvalues, 4),
-    Variance_Pct = round(100 * prop_variance, 2),
-    Cumulative_Pct = round(100 * cum_variance, 2)
+  # Perform PCA
+  pca_result <- prcomp(data, scale = scale, center = TRUE)
+
+  # Add labels to the scores
+  if (!is.null(labels)) {
+    rownames(pca_result$x) <- labels
+  }
+
+  # Calculate variance explained
+  var_explained <- pca_result$sdev^2 / sum(pca_result$sdev^2) * 100
+
+  # Create biplot if requested
+  if (plot && length(choices) == 2) {
+    # Set up plot parameters
+    par(mar = c(5, 4, 4, 4))
+
+    # Get scores for chosen PCs
+    scores <- pca_result$x[, choices]
+
+    # Get loadings for chosen PCs
+    loadings <- pca_result$rotation[, choices]
+
+    # Scale factors for display
+    score_scale <- 1
+    loading_scale <- max(abs(scores)) / max(abs(loadings)) * 0.8
+
+    # Create axis labels
+    xlab <- sprintf("PC%d (%.1f%%)", choices[1], var_explained[choices[1]])
+    ylab <- sprintf("PC%d (%.1f%%)", choices[2], var_explained[choices[2]])
+
+    # Plot scores
+    plot(scores[,1] * score_scale, scores[,2] * score_scale,
+         xlab = xlab, ylab = ylab,
+         main = "PCA Biplot",
+         pch = 16, col = "steelblue",
+         xlim = range(scores[,1]) * 1.2,
+         ylim = range(scores[,2]) * 1.2)
+
+    # Add grid
+    grid(col = "lightgray", lty = "dotted")
+    abline(h = 0, v = 0, col = "gray", lty = 2)
+
+    # Add observation labels if available
+    if (!is.null(labels)) {
+      text(scores[,1] * score_scale, scores[,2] * score_scale,
+           labels = labels,
+           pos = 3, cex = 0.7, col = "darkblue")
+    }
+
+    # Add loading vectors
+    for (i in 1:nrow(loadings)) {
+      arrows(0, 0,
+             loadings[i,1] * loading_scale,
+             loadings[i,2] * loading_scale,
+             col = "red", length = 0.1, lwd = 2)
+
+      # Position text at end of arrow with some padding
+      text_x <- loadings[i,1] * loading_scale * 1.1
+      text_y <- loadings[i,2] * loading_scale * 1.1
+
+      text(text_x, text_y,
+           rownames(loadings)[i],
+           col = "red", cex = 0.9, font = 2)
+    }
+
+    # Add legend
+    legend("topright",
+           legend = c("Observations", "Variables"),
+           col = c("steelblue", "red"),
+           pch = c(16, NA),
+           lty = c(NA, 1),
+           lwd = c(NA, 2),
+           cex = 0.8)
+  }
+
+  # Create result object
+  result <- pca_result
+  result$var_explained <- var_explained
+  result$id_column <- id
+  result$labels <- labels
+  result$numeric_data <- data  # Store the data actually used for PCA
+
+  class(result) <- c("bpca", class(result))
+
+  return(result)
+}
+
+#' Print method for bpca objects
+#'
+#' @param x A bpca object
+#' @param ... Additional arguments (ignored)
+#'
+#' @export
+#' @method print bpca
+print.bpca <- function(x, ...) {
+  cat("\nPrincipal Component Analysis Results\n")
+  cat("=====================================\n")
+
+  cat("\nData dimensions:", nrow(x$x), "observations,", ncol(x$rotation), "variables\n")
+
+  if (!is.null(x$id_column)) {
+    cat("ID column used for labels:", x$id_column, "(excluded from analysis)\n")
+  }
+
+  cat("\nStandard deviations (1, .., p=", length(x$sdev), "):\n", sep = "")
+  print(round(x$sdev, 4))
+
+  cat("\nProportion of Variance:\n")
+  print(round(x$var_explained[1:min(5, length(x$var_explained))], 2))
+
+  if (length(x$var_explained) > 5) {
+    cat("(showing first 5 components)\n")
+  }
+
+  cat("\nCumulative Proportion:\n")
+  cum_var <- cumsum(x$var_explained)
+  print(round(cum_var[1:min(5, length(cum_var))], 2))
+
+  # Show correlation matrix of numeric variables only
+  cat("\nCorrelation matrix (numeric variables only):\n")
+  cor_mat <- cor(x$numeric_data)
+  print(round(cor_mat, 3))
+
+  invisible(x)
+}
+
+#' Summary method for bpca objects
+#'
+#' @param object A bpca object
+#' @param ... Additional arguments (ignored)
+#'
+#' @export
+#' @method summary bpca
+summary.bpca <- function(object, ...) {
+  cat("\nImportance of components:\n")
+
+  # Create importance table
+  importance <- rbind(
+    `Standard deviation` = object$sdev,
+    `Proportion of Variance` = object$var_explained / 100,
+    `Cumulative Proportion` = cumsum(object$var_explained) / 100
   )
-  print(eigen_table, row.names = FALSE)
-  cat("\n")
 
-  # Kaiser criterion
-  n_kaiser <- sum(eigenvalues > 1)
-  cat(paste("Components with eigenvalue > 1 (Kaiser criterion):", n_kaiser, "\n\n"))
+  colnames(importance) <- paste0("PC", 1:ncol(importance))
 
-  # Loadings matrix
-  cat("COMPONENT LOADINGS (Variable-Component Correlations)\n")
-  cat("----------------------------------------------------\n")
-  loadings_df <- as.data.frame(loadings)
-  n_show <- min(10, p)
-  print(round(loadings_df[1:n_show, , drop = FALSE], 3))
-  if (p > 10) cat("... [", p - 10, " more variables]\n", sep = "")
-  cat("\n")
+  # Print rounded to 4 decimal places
+  print(round(importance[, 1:min(7, ncol(importance))], 4))
 
-  # Communalities
-  cat("COMMUNALITIES (Variance Explained per Variable)\n")
-  cat("-----------------------------------------------\n")
-  comm_df <- data.frame(
-    Variable = var_names[1:n_show],
-    Communality = round(communalities[1:n_show], 3)
-  )
-  print(comm_df, row.names = FALSE)
-  if (p > 10) cat("... [", p - 10, " more variables]\n", sep = "")
-  cat("\n")
+  if (ncol(importance) > 7) {
+    cat("...\n(Showing first 7 components)\n")
+  }
 
-  # Score statistics
-  cat(paste0(scores_label, "\n"))
-  cat("-----------------------------------------------\n")
-  score_summary <- data.frame(
-    Component = paste0("PC", 1:min(5, n_components)),
-    Mean = round(colMeans(scores[, 1:min(5, n_components), drop = FALSE]), 6),
-    StdDev = round(apply(scores[, 1:min(5, n_components), drop = FALSE], 2, sd), 4),
-    Min = round(apply(scores[, 1:min(5, n_components), drop = FALSE], 2, min), 3),
-    Max = round(apply(scores[, 1:min(5, n_components), drop = FALSE], 2, max), 3)
-  )
-  print(score_summary, row.names = FALSE)
-  cat("\n")
-
-  # Verification
-  cat("VERIFICATION\n")
-  cat("------------\n")
-  actual_cor <- cor(X_std[, 1], scores_raw[, 1])
-  expected_cor <- loadings[1, 1]
-  cat("Correlation between", var_names[1], "and PC1:\n")
-  cat("  Computed from data: ", round(actual_cor, 4), "\n")
-  cat("  From loadings matrix: ", round(expected_cor, 4), "\n")
-  cat("  Match: ", ifelse(abs(actual_cor - expected_cor) < 0.001, "YES", "NO"), "\n\n")
-
-  # Return results with all names properly set
-  result <- list(
-    eigenvalues = eigenvalues,
-    variance_explained = data.frame(
-      component = 1:n_components,
-      eigenvalue = eigenvalues,
-      prop_variance = prop_variance,
-      cum_variance = cum_variance
-    ),
-    loadings = loadings,
-    eigenvectors = eigenvectors,
-    scores = scores,
-    scores_raw = scores_raw,
-    communalities = communalities,
-    correlation_matrix = R,
-    standardized_data = X_std
-  )
-
-  class(result) <- "bpca"
-  invisible(result)
+  invisible(object)
 }
