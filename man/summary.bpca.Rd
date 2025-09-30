@@ -4,10 +4,12 @@
 \alias{summary.bpca}
 \title{Summary method for bpca objects}
 \usage{
-\method{summary}{bpca}(object, ...)
+\method{summary}{bpca}(object, ncomp = 7, ...)
 }
 \arguments{
 \item{object}{A bpca object}
+
+\item{ncomp}{Number of components to display (default = 7)}
 
 \item{...}{Additional arguments (ignored)}
 }

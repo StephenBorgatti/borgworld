@@ -8,10 +8,16 @@
 #' @param plot Logical, whether to produce a biplot (default = TRUE)
 #' @param choices Numeric vector of length 2 indicating which PCs to plot (default = c(1,2))
 #'
-#' @return An object of class "bpca" containing the prcomp results
+#' @return An object of class "bpca" containing:
+#'   - scores: The principal component scores (same as x)
+#'   - loadings: The loadings matrix (same as rotation)
+#'   - correlation: Correlation matrix of the numeric variables
+#'   - var_explained: Percentage of variance explained by each PC
+#'   - sdev: Standard deviations of the principal components
+#'   - numeric_data: The numeric data used for PCA
 #'
-#' @importFrom stats prcomp cor
-#' @importFrom graphics plot arrows text par
+#' @importFrom stats prcomp cor complete.cases
+#' @importFrom graphics plot arrows text par grid abline legend
 #' @export
 #'
 #' @examples
@@ -21,6 +27,12 @@
 #' # With ID variable - exclude it from PCA but use for labels
 #' data_with_id <- cbind(id = paste0("S", 1:150), iris[,1:4])
 #' bpca(data_with_id, id = "id")
+#'
+#' # Using row names as labels
+#' # If reading from CSV: data <- read.csv("mydata.csv", row.names = 1)
+#' # Example with built-in data:
+#' mtcars_subset <- mtcars[,1:6]  # Use first 6 numeric columns
+#' bpca(mtcars_subset)
 #'
 bpca <- function(data, id = NULL, scale = TRUE, plot = TRUE, choices = c(1, 2)) {
 
@@ -73,6 +85,9 @@ bpca <- function(data, id = NULL, scale = TRUE, plot = TRUE, choices = c(1, 2)) 
   # Calculate variance explained
   var_explained <- pca_result$sdev^2 / sum(pca_result$sdev^2) * 100
 
+  # Calculate correlation matrix
+  cor_matrix <- cor(data)
+
   # Create biplot if requested
   if (plot && length(choices) == 2) {
     # Set up plot parameters
@@ -109,6 +124,11 @@ bpca <- function(data, id = NULL, scale = TRUE, plot = TRUE, choices = c(1, 2)) 
       text(scores[,1] * score_scale, scores[,2] * score_scale,
            labels = labels,
            pos = 3, cex = 0.7, col = "darkblue")
+    } else if (!is.null(rownames(scores))) {
+      # Use row names if no explicit labels
+      text(scores[,1] * score_scale, scores[,2] * score_scale,
+           labels = rownames(scores),
+           pos = 3, cex = 0.7, col = "darkblue")
     }
 
     # Add loading vectors
@@ -137,12 +157,15 @@ bpca <- function(data, id = NULL, scale = TRUE, plot = TRUE, choices = c(1, 2)) 
            cex = 0.8)
   }
 
-  # Create result object
+  # Create result object with all components
   result <- pca_result
   result$var_explained <- var_explained
   result$id_column <- id
   result$labels <- labels
   result$numeric_data <- data  # Store the data actually used for PCA
+  result$correlation <- cor_matrix  # Store correlation matrix
+  result$scores <- pca_result$x  # Explicit alias for scores
+  result$loadings <- pca_result$rotation  # Explicit alias for loadings
 
   class(result) <- c("bpca", class(result))
 
@@ -160,7 +183,7 @@ print.bpca <- function(x, ...) {
   cat("\nPrincipal Component Analysis Results\n")
   cat("=====================================\n")
 
-  cat("\nData dimensions:", nrow(x$x), "observations,", ncol(x$rotation), "variables\n")
+  cat("\nData dimensions:", nrow(x$scores), "observations,", ncol(x$loadings), "variables\n")
 
   if (!is.null(x$id_column)) {
     cat("ID column used for labels:", x$id_column, "(excluded from analysis)\n")
@@ -180,10 +203,18 @@ print.bpca <- function(x, ...) {
   cum_var <- cumsum(x$var_explained)
   print(round(cum_var[1:min(5, length(cum_var))], 2))
 
-  # Show correlation matrix of numeric variables only
-  cat("\nCorrelation matrix (numeric variables only):\n")
-  cor_mat <- cor(x$numeric_data)
-  print(round(cor_mat, 3))
+  # Show correlation matrix
+  cat("\nCorrelation matrix:\n")
+  print(round(x$correlation, 3))
+
+  # Show first few PC scores
+  cat("\nFirst few PC scores:\n")
+  n_show <- min(6, nrow(x$scores))
+  pc_show <- min(4, ncol(x$scores))
+  print(round(x$scores[1:n_show, 1:pc_show], 3))
+  if (nrow(x$scores) > 6 || ncol(x$scores) > 4) {
+    cat("(Showing first", n_show, "observations and", pc_show, "PCs)\n")
+  }
 
   invisible(x)
 }
@@ -191,11 +222,18 @@ print.bpca <- function(x, ...) {
 #' Summary method for bpca objects
 #'
 #' @param object A bpca object
+#' @param ncomp Number of components to display (default = 7)
 #' @param ... Additional arguments (ignored)
 #'
 #' @export
 #' @method summary bpca
-summary.bpca <- function(object, ...) {
+summary.bpca <- function(object, ncomp = 7, ...) {
+  cat("\nPCA Summary\n")
+  cat("===========\n")
+
+  cat("\nCall: bpca with", nrow(object$scores), "observations and",
+      ncol(object$loadings), "variables\n")
+
   cat("\nImportance of components:\n")
 
   # Create importance table
@@ -208,11 +246,29 @@ summary.bpca <- function(object, ...) {
   colnames(importance) <- paste0("PC", 1:ncol(importance))
 
   # Print rounded to 4 decimal places
-  print(round(importance[, 1:min(7, ncol(importance))], 4))
+  n_show <- min(ncomp, ncol(importance))
+  print(round(importance[, 1:n_show], 4))
 
-  if (ncol(importance) > 7) {
-    cat("...\n(Showing first 7 components)\n")
+  if (ncol(importance) > n_show) {
+    cat("...\n(Showing first", n_show, "components)\n")
   }
+
+  # Show loadings for first few components
+  cat("\nLoadings:\n")
+  n_comp_show <- min(3, ncol(object$loadings))
+  print(round(object$loadings[, 1:n_comp_show], 3))
+  if (ncol(object$loadings) > 3) {
+    cat("(Showing first 3 components)\n")
+  }
+
+  # Determine number of components to retain
+  cum_var <- cumsum(object$var_explained)
+  n_80 <- which(cum_var >= 80)[1]
+  n_90 <- which(cum_var >= 90)[1]
+
+  cat("\nComponents needed for variance explained:\n")
+  cat("  80% variance:", n_80, "components\n")
+  cat("  90% variance:", n_90, "components\n")
 
   invisible(object)
 }

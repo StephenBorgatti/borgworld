@@ -18,7 +18,15 @@ bpca(data, id = NULL, scale = TRUE, plot = TRUE, choices = c(1, 2))
 \item{choices}{Numeric vector of length 2 indicating which PCs to plot (default = c(1,2))}
 }
 \value{
-An object of class "bpca" containing the prcomp results
+An object of class "bpca" containing:
+\itemize{
+\item scores: The principal component scores (same as x)
+\item loadings: The loadings matrix (same as rotation)
+\item correlation: Correlation matrix of the numeric variables
+\item var_explained: Percentage of variance explained by each PC
+\item sdev: Standard deviations of the principal components
+\item numeric_data: The numeric data used for PCA
+}
 }
 \description{
 Performs PCA and creates a biplot with optional ID labels
@@ -30,5 +38,11 @@ bpca(iris[,1:4])
 # With ID variable - exclude it from PCA but use for labels
 data_with_id <- cbind(id = paste0("S", 1:150), iris[,1:4])
 bpca(data_with_id, id = "id")
+
+# Using row names as labels
+# If reading from CSV: data <- read.csv("mydata.csv", row.names = 1)
+# Example with built-in data:
+mtcars_subset <- mtcars[,1:6]  # Use first 6 numeric columns
+bpca(mtcars_subset)
 
 }
