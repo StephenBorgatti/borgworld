@@ -2,21 +2,54 @@
 % Please edit documentation in R/b_data.R
 \name{bstandardize}
 \alias{bstandardize}
-\title{Standardize columns of df}
+\title{Standardize columns of a data frame}
 \usage{
-bstandardize(df, k = 3)
+bstandardize(data, sample = FALSE, center = TRUE)
 }
 \arguments{
-\item{df}{data frame}
+\item{data}{A data frame or matrix}
+
+\item{sample}{Logical; if FALSE (default), uses population SD (divide by n).
+If TRUE, uses sample SD (divide by n-1, R's default).}
+
+\item{center}{Logical; if TRUE (default), centers the data by subtracting the mean.
+If FALSE, only scales by the standard deviation.}
 }
 \value{
-data frame of z-scores
-Non-finite inputs return NA.
+A data frame with standardized numeric columns
 }
 \description{
-Standardize columns of df
+Standardizes (z-scores) numeric columns after removing NAs and non-numeric columns.
+By default uses population standard deviation (n), but can optionally use
+sample standard deviation (n-1).
+}
+\details{
+This function first calls \code{bclean} to remove rows with NAs and select
+only numeric columns, then standardizes each column to have mean 0 and
+standard deviation 1.
+
+The population standard deviation formula (default) divides by n, while
+the sample standard deviation divides by n-1. Most statistical software
+uses the sample SD by default, but population SD is sometimes preferred
+for descriptive statistics.
 }
 \examples{
-  # Simple scatter
-  bstandardize(hdi)
+# Create example data
+set.seed(123)
+data <- data.frame(
+  x = rnorm(100, mean = 10, sd = 2),
+  y = rnorm(100, mean = 50, sd = 10),
+  z = letters[1:100]  # Will be removed by bclean
+)
+
+# Standardize using population SD (default)
+data_std <- bstandardize(data)
+
+# Verify: should have mean ~0 and SD ~1
+colMeans(data_std)
+apply(data_std, 2, sd) * sqrt(99/100)  # Convert back to pop SD
+
+# Standardize using sample SD
+data_std_sample <- bstandardize(data, sample = TRUE)
+
 }

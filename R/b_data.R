@@ -8,8 +8,10 @@
 #'         Non-finite inputs return NA.
 #' @export
 #' @examples
-#'   # Simple scatter
-#'   bautocut(centrality,3)
+#'   # Create example data
+#'   x <- rnorm(100)
+#'   # Cut into 3 groups
+#'   bautocut(x, 3)
 bautocut <- function(x, k = 3) {
   x <- as.numeric(x)
   idx <- is.finite(x)
@@ -28,16 +30,111 @@ bautocut <- function(x, k = 3) {
   out
 }
 
-#' Standardize columns of df
+#' Clean data for borgworld analysis functions
 #'
-#' @param df data frame
-#' @return data frame of z-scores
-#'         Non-finite inputs return NA.
+#' Removes rows with missing values and selects only numeric columns.
+#' This is a preprocessing utility used by various borgworld functions.
+#'
+#' @param data A data frame or matrix
+#' @return A data frame with only complete cases and numeric columns
+#' @importFrom tidyr drop_na
+#' @importFrom dplyr select where
 #' @export
-#' @examples
-#'   # Simple scatter
-#'   bstandardize(hdi)
-bstandardize <- function(df, k = 3) {
-  df |> mutate(across(all_of(vars), z_pop, .names = "z_{.col}"))
+bclean <- function(data) {
+  # Convert matrix to data frame if needed
+  if (is.matrix(data)) {
+    data <- as.data.frame(data)
+  }
 
+  data |>
+    tidyr::drop_na() |>
+    dplyr::select(where(is.numeric))
+}
+
+#' Standardize columns of a data frame
+#'
+#' Standardizes (z-scores) numeric columns after removing NAs and non-numeric columns.
+#' By default uses population standard deviation (n), but can optionally use
+#' sample standard deviation (n-1).
+#'
+#' @param data A data frame or matrix
+#' @param sample Logical; if FALSE (default), uses population SD (divide by n).
+#'   If TRUE, uses sample SD (divide by n-1, R's default).
+#' @param center Logical; if TRUE (default), centers the data by subtracting the mean.
+#'   If FALSE, only scales by the standard deviation.
+#'
+#' @return A data frame with standardized numeric columns
+#'
+#' @details
+#' This function first calls \code{bclean} to remove rows with NAs and select
+#' only numeric columns, then standardizes each column to have mean 0 and
+#' standard deviation 1.
+#'
+#' The population standard deviation formula (default) divides by n, while
+#' the sample standard deviation divides by n-1. Most statistical software
+#' uses the sample SD by default, but population SD is sometimes preferred
+#' for descriptive statistics.
+#'
+#' @examples
+#' # Create example data
+#' set.seed(123)
+#' data <- data.frame(
+#'   x = rnorm(100, mean = 10, sd = 2),
+#'   y = rnorm(100, mean = 50, sd = 10),
+#'   z = letters[1:100]  # Will be removed by bclean
+#' )
+#'
+#' # Standardize using population SD (default)
+#' data_std <- bstandardize(data)
+#'
+#' # Verify: should have mean ~0 and SD ~1
+#' colMeans(data_std)
+#' apply(data_std, 2, sd) * sqrt(99/100)  # Convert back to pop SD
+#'
+#' # Standardize using sample SD
+#' data_std_sample <- bstandardize(data, sample = TRUE)
+#'
+#' @importFrom stats sd
+#' @export
+bstandardize <- function(data, sample = FALSE, center = TRUE) {
+  # Clean the data first
+  data <- bclean(data)
+
+  # Check if any data remains
+  if (nrow(data) == 0 || ncol(data) == 0) {
+    stop("No data remaining after cleaning")
+  }
+
+  n <- nrow(data)
+
+  # Calculate means for centering
+  if (center) {
+    means <- colMeans(data)
+  } else {
+    means <- rep(0, ncol(data))
+  }
+
+  # Calculate standard deviations
+  if (sample) {
+    # Sample SD (n-1), R's default
+    sds <- apply(data, 2, sd)
+  } else {
+    # Population SD (n)
+    sds <- apply(data, 2, function(x) {
+      sqrt(sum((x - mean(x))^2) / length(x))
+    })
+  }
+
+  # Check for zero variance columns
+  zero_var <- sds == 0
+  if (any(zero_var)) {
+    warning(paste("Column(s)", paste(names(data)[zero_var], collapse = ", "),
+                  "have zero variance and cannot be standardized"))
+    sds[zero_var] <- 1  # Don't divide by zero
+  }
+
+  # Standardize
+  data_std <- as.data.frame(scale(data, center = means, scale = sds))
+
+  return(data_std)
 }

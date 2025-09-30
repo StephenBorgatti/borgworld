@@ -68,11 +68,12 @@
 #' Hair, J. F., Black, W. C., Babin, B. J., & Anderson, R. E. (2019).
 #' Multivariate Data Analysis (8th ed.). Cengage Learning.
 #'
-#' @importFrom stats cor sd eigen
+#' @importFrom stats cor sd
 #' @importFrom utils capture.output
 #' @export
 bpca <- function(data, n_components = NULL, standardize_scores = TRUE) {
-  # Convert to matrix
+  # Convert to clean matrix
+  data <- bclean(data)
   X <- as.matrix(data)
   n <- nrow(X)
   p <- ncol(X)

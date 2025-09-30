@@ -102,3 +102,4 @@ bsum <- function(x, ...) {
 bmean <- function(x, ...) {
   mean(x, na.rm = TRUE, ...)
 }
+

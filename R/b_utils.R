@@ -19,6 +19,7 @@ bvars <- function(df) {
 ##' Copy data fram to the clipboard
 #' @param df A data frame or tibble.
 #' @return data.frame with columns: variable, type
+#' @importFrom utils write.table
 #' @export
 #' @examples
 #' bclip(iris)
@@ -31,6 +32,7 @@ bclip <- function(df) {
 }
 
 #' @rdname bclip
+#' @importFrom utils write.table
 #' @export
 bsnip <- bclip
 

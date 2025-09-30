@@ -19,6 +19,8 @@ Non-finite inputs return NA.
 Cut a numeric vector into k ordered groups via k-means
 }
 \examples{
-  # Simple scatter
-  bautocut(centrality,3)
+  # Create example data
+  x <- rnorm(100)
+  # Cut into 3 groups
+  bautocut(x, 3)
 }
