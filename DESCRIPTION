@@ -20,4 +20,6 @@ Imports:
 URL: https://github.com/StephenBorgatti/borgworld
 BugReports: https://github.com/StephenBorgatti/borgworld/issues
 Suggests: 
-    palmerpenguins
+    palmerpenguins,
+    plotrix,
+    testthat

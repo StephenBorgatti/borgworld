@@ -4,7 +4,8 @@
 #' Computes Euclidean distance (or other distance metrics) between rows or columns
 #' of a matrix or data frame. Unlike \code{dist()}, this function handles missing
 #' values by imputing them with the mean, automatically ignores non-numeric columns,
-#' and defaults to computing distances between columns (similar to \code{cor()}).
+#' defaults to computing distances between columns (similar to \code{cor()}), and
+#' returns a full matrix (similar to \code{cor()}) rather than a dist object.
 #'
 #' @param x A matrix or data frame. Non-numeric columns will be automatically removed.
 #' @param dim Character string specifying whether to compute distances between
@@ -16,16 +17,12 @@
 #'     \item \code{method}: The distance measure to use. Options include
 #'       "euclidean" (default), "maximum", "manhattan", "canberra", "binary",
 #'       or "minkowski".
-#'     \item \code{diag}: Logical indicating whether the diagonal of the
-#'       distance matrix should be printed.
-#'     \item \code{upper}: Logical indicating whether the upper triangle of the
-#'       distance matrix should be printed.
 #'     \item \code{p}: The power of the Minkowski distance.
 #'   }
 #'
-#' @return An object of class \code{"dist"} containing the computed distances.
-#'   This is a lower triangular matrix by default (use \code{as.matrix()} to
-#'   convert to a full matrix).
+#' @return A numeric matrix containing the computed distances. Unlike \code{dist()},
+#'   this returns a full symmetric matrix with zeros on the diagonal, similar to
+#'   the output format of \code{cor()} and \code{bcor()}.
 #'
 #' @details
 #' The function automatically removes non-numeric columns with a warning message
@@ -51,7 +48,7 @@
 #' colnames(mat) <- paste0("var", 1:4)
 #' rownames(mat) <- paste0("obs", 1:5)
 #'
-#' # Compute distances between columns (default)
+#' # Compute distances between columns (default) - returns full matrix
 #' beuc(mat)
 #' beuc(mat, "columns")  # Same as above
 #'
@@ -81,16 +78,14 @@
 #' beuc(mat, "columns", method = "manhattan")
 #' beuc(mat, "rows", method = "maximum")
 #'
-#' # Get full distance matrix
-#' as.matrix(beuc(mat))
-#'
-#' # Return upper triangle and diagonal
-#' beuc(mat, "columns", diag = TRUE, upper = TRUE)
+#' # Output is already a full matrix (no conversion needed)
+#' result <- beuc(mat)
+#' class(result)  # "matrix" not "dist"
 #'
 #' @seealso
 #' \code{\link{dist}} for the base R distance function,
-#' \code{\link{cor}} for correlation computation with similar syntax,
-#' \code{\link{bcor}} for correlation with similar data handling
+#' \code{\link{cor}} for correlation computation with similar syntax and output format,
+#' \code{\link{bcor}} for correlation with similar data handling and output format
 #'
 #' @export
 beuc <- function(x, dim = "columns", ...) {
@@ -112,6 +107,13 @@ beuc <- function(x, dim = "columns", ...) {
     stop("dim must be 'rows' or 'columns' (or any string starting with 'r' or 'c')")
   }
 
+  # Store original names for later
+  if (margin == 2) {
+    original_names <- colnames(x)
+  } else {
+    original_names <- rownames(x)
+  }
+
   # Work with matrix
   x <- as.matrix(x)
 
@@ -131,6 +133,11 @@ beuc <- function(x, dim = "columns", ...) {
       paste(removed_cols, collapse = ", ")
     ))
     x <- x[, numeric_cols, drop = FALSE]
+
+    # Update original_names if columns were removed and we're computing column distances
+    if (margin == 2) {
+      original_names <- colnames(x)
+    }
   }
 
   # Convert to numeric matrix (in case some columns were character but convertible)
@@ -184,5 +191,22 @@ beuc <- function(x, dim = "columns", ...) {
   }
 
   # Compute distances (defaults to euclidean if method not specified)
-  dist(x, ...)
+  # Filter out diag and upper arguments if present (not needed for full matrix)
+  dist_args <- list(...)
+  dist_args <- dist_args[!names(dist_args) %in% c("diag", "upper")]
+
+  # Call dist with filtered arguments
+  d <- do.call(dist, c(list(x = x), dist_args))
+
+  # Convert to full matrix
+  distance_matrix <- as.matrix(d)
+
+  # Set row and column names if available
+  if (!is.null(original_names)) {
+    rownames(distance_matrix) <- original_names
+    colnames(distance_matrix) <- original_names
+  }
+
+  # Return the full matrix
+  distance_matrix
 }

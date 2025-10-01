@@ -2,9 +2,9 @@
 % Please edit documentation in R/b_pca.R
 \name{bpca}
 \alias{bpca}
-\title{Principal Component Analysis with Biplot}
+\title{Principal Component Analysis}
 \usage{
-bpca(data, id = NULL, scale = TRUE, plot = TRUE, choices = c(1, 2))
+bpca(data, id = NULL, scale = TRUE)
 }
 \arguments{
 \item{data}{A data frame containing numeric variables for PCA}
@@ -12,10 +12,6 @@ bpca(data, id = NULL, scale = TRUE, plot = TRUE, choices = c(1, 2))
 \item{id}{Character string naming the column to use as labels (optional)}
 
 \item{scale}{Logical, whether to scale variables to unit variance (default = TRUE)}
-
-\item{plot}{Logical, whether to produce a biplot (default = TRUE)}
-
-\item{choices}{Numeric vector of length 2 indicating which PCs to plot (default = c(1,2))}
 }
 \value{
 An object of class "bpca" containing:
@@ -26,23 +22,22 @@ An object of class "bpca" containing:
 \item var_explained: Percentage of variance explained by each PC
 \item sdev: Standard deviations of the principal components
 \item numeric_data: The numeric data used for PCA
+\item All standard prcomp components (x, rotation, center, scale, sdev)
 }
 }
 \description{
-Performs PCA and creates a biplot with optional ID labels
+Performs PCA on numeric variables in a data frame
 }
 \examples{
 # Without ID variable
-bpca(iris[,1:4])
+p <- bpca(iris[,1:4])
+summary(p)
 
 # With ID variable - exclude it from PCA but use for labels
 data_with_id <- cbind(id = paste0("S", 1:150), iris[,1:4])
-bpca(data_with_id, id = "id")
+p <- bpca(data_with_id, id = "id")
 
-# Using row names as labels
-# If reading from CSV: data <- read.csv("mydata.csv", row.names = 1)
-# Example with built-in data:
-mtcars_subset <- mtcars[,1:6]  # Use first 6 numeric columns
-bpca(mtcars_subset)
+# Use with bpcabiplot for visualization
+# bpcabiplot(p)
 
 }

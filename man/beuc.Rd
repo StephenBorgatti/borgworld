@@ -19,23 +19,20 @@ beuc(x, dim = "columns", ...)
 \item \code{method}: The distance measure to use. Options include
 "euclidean" (default), "maximum", "manhattan", "canberra", "binary",
 or "minkowski".
-\item \code{diag}: Logical indicating whether the diagonal of the
-distance matrix should be printed.
-\item \code{upper}: Logical indicating whether the upper triangle of the
-distance matrix should be printed.
 \item \code{p}: The power of the Minkowski distance.
 }}
 }
 \value{
-An object of class \code{"dist"} containing the computed distances.
-This is a lower triangular matrix by default (use \code{as.matrix()} to
-convert to a full matrix).
+A numeric matrix containing the computed distances. Unlike \code{dist()},
+this returns a full symmetric matrix with zeros on the diagonal, similar to
+the output format of \code{cor()} and \code{bcor()}.
 }
 \description{
 Computes Euclidean distance (or other distance metrics) between rows or columns
 of a matrix or data frame. Unlike \code{dist()}, this function handles missing
 values by imputing them with the mean, automatically ignores non-numeric columns,
-and defaults to computing distances between columns (similar to \code{cor()}).
+defaults to computing distances between columns (similar to \code{cor()}), and
+returns a full matrix (similar to \code{cor()}) rather than a dist object.
 }
 \details{
 The function automatically removes non-numeric columns with a warning message
@@ -61,7 +58,7 @@ mat <- matrix(rnorm(20), nrow = 5, ncol = 4)
 colnames(mat) <- paste0("var", 1:4)
 rownames(mat) <- paste0("obs", 1:5)
 
-# Compute distances between columns (default)
+# Compute distances between columns (default) - returns full matrix
 beuc(mat)
 beuc(mat, "columns")  # Same as above
 
@@ -91,15 +88,13 @@ beuc(df)  # Warns about non-numeric columns, uses only x, y, z
 beuc(mat, "columns", method = "manhattan")
 beuc(mat, "rows", method = "maximum")
 
-# Get full distance matrix
-as.matrix(beuc(mat))
-
-# Return upper triangle and diagonal
-beuc(mat, "columns", diag = TRUE, upper = TRUE)
+# Output is already a full matrix (no conversion needed)
+result <- beuc(mat)
+class(result)  # "matrix" not "dist"
 
 }
 \seealso{
 \code{\link{dist}} for the base R distance function,
-\code{\link{cor}} for correlation computation with similar syntax,
-\code{\link{bcor}} for correlation with similar data handling
+\code{\link{cor}} for correlation computation with similar syntax and output format,
+\code{\link{bcor}} for correlation with similar data handling and output format
 }

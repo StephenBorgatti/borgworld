@@ -23,17 +23,16 @@
 #'   \item Standardized scores = R's scores / sqrt(eigenvalue)
 #' }
 #'
-#' @examples
+##' @examples
 #' # Create example data
 #' set.seed(123)
 #' data <- as.data.frame(matrix(rnorm(100 * 5), nrow = 100, ncol = 5))
 #' colnames(data) <- paste0("Var", 1:5)
 #'
 #' # Run borgworld PCA
-#' result <- bpca(data)  # No n_components parameter
+#' result <- bpca(data)
 #'
-#' # Or if you want to specify which components to plot:
-#' result <- bpca(data, choices = c(1, 3))
+#' # Compare with base R (remove the choices example line)
 #'
 #' @seealso \code{\link{bpca}}
 #' @importFrom stats prcomp

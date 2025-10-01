@@ -1,12 +1,10 @@
-#' Principal Component Analysis with Biplot
+#' Principal Component Analysis
 #'
-#' Performs PCA and creates a biplot with optional ID labels
+#' Performs PCA on numeric variables in a data frame
 #'
 #' @param data A data frame containing numeric variables for PCA
 #' @param id Character string naming the column to use as labels (optional)
 #' @param scale Logical, whether to scale variables to unit variance (default = TRUE)
-#' @param plot Logical, whether to produce a biplot (default = TRUE)
-#' @param choices Numeric vector of length 2 indicating which PCs to plot (default = c(1,2))
 #'
 #' @return An object of class "bpca" containing:
 #'   - scores: The principal component scores (same as x)
@@ -15,26 +13,24 @@
 #'   - var_explained: Percentage of variance explained by each PC
 #'   - sdev: Standard deviations of the principal components
 #'   - numeric_data: The numeric data used for PCA
+#'   - All standard prcomp components (x, rotation, center, scale, sdev)
 #'
 #' @importFrom stats prcomp cor complete.cases
-#' @importFrom graphics plot arrows text par grid abline legend
 #' @export
 #'
 #' @examples
 #' # Without ID variable
-#' bpca(iris[,1:4])
+#' p <- bpca(iris[,1:4])
+#' summary(p)
 #'
 #' # With ID variable - exclude it from PCA but use for labels
 #' data_with_id <- cbind(id = paste0("S", 1:150), iris[,1:4])
-#' bpca(data_with_id, id = "id")
+#' p <- bpca(data_with_id, id = "id")
 #'
-#' # Using row names as labels
-#' # If reading from CSV: data <- read.csv("mydata.csv", row.names = 1)
-#' # Example with built-in data:
-#' mtcars_subset <- mtcars[,1:6]  # Use first 6 numeric columns
-#' bpca(mtcars_subset)
+#' # Use with bpcabiplot for visualization
+#' # bpcabiplot(p)
 #'
-bpca <- function(data, id = NULL, scale = TRUE, plot = TRUE, choices = c(1, 2)) {
+bpca <- function(data, id = NULL, scale = TRUE) {
 
   # Store original data
   original_data <- data
@@ -87,75 +83,6 @@ bpca <- function(data, id = NULL, scale = TRUE, plot = TRUE, choices = c(1, 2)) 
 
   # Calculate correlation matrix
   cor_matrix <- cor(data)
-
-  # Create biplot if requested
-  if (plot && length(choices) == 2) {
-    # Set up plot parameters
-    par(mar = c(5, 4, 4, 4))
-
-    # Get scores for chosen PCs
-    scores <- pca_result$x[, choices]
-
-    # Get loadings for chosen PCs
-    loadings <- pca_result$rotation[, choices]
-
-    # Scale factors for display
-    score_scale <- 1
-    loading_scale <- max(abs(scores)) / max(abs(loadings)) * 0.8
-
-    # Create axis labels
-    xlab <- sprintf("PC%d (%.1f%%)", choices[1], var_explained[choices[1]])
-    ylab <- sprintf("PC%d (%.1f%%)", choices[2], var_explained[choices[2]])
-
-    # Plot scores
-    plot(scores[,1] * score_scale, scores[,2] * score_scale,
-         xlab = xlab, ylab = ylab,
-         main = "PCA Biplot",
-         pch = 16, col = "steelblue",
-         xlim = range(scores[,1]) * 1.2,
-         ylim = range(scores[,2]) * 1.2)
-
-    # Add grid
-    grid(col = "lightgray", lty = "dotted")
-    abline(h = 0, v = 0, col = "gray", lty = 2)
-
-    # Add observation labels if available
-    if (!is.null(labels)) {
-      text(scores[,1] * score_scale, scores[,2] * score_scale,
-           labels = labels,
-           pos = 3, cex = 0.7, col = "darkblue")
-    } else if (!is.null(rownames(scores))) {
-      # Use row names if no explicit labels
-      text(scores[,1] * score_scale, scores[,2] * score_scale,
-           labels = rownames(scores),
-           pos = 3, cex = 0.7, col = "darkblue")
-    }
-
-    # Add loading vectors
-    for (i in 1:nrow(loadings)) {
-      arrows(0, 0,
-             loadings[i,1] * loading_scale,
-             loadings[i,2] * loading_scale,
-             col = "red", length = 0.1, lwd = 2)
-
-      # Position text at end of arrow with some padding
-      text_x <- loadings[i,1] * loading_scale * 1.1
-      text_y <- loadings[i,2] * loading_scale * 1.1
-
-      text(text_x, text_y,
-           rownames(loadings)[i],
-           col = "red", cex = 0.9, font = 2)
-    }
-
-    # Add legend
-    legend("topright",
-           legend = c("Observations", "Variables"),
-           col = c("steelblue", "red"),
-           pch = c(16, NA),
-           lty = c(NA, 1),
-           lwd = c(NA, 2),
-           cex = 0.8)
-  }
 
   # Create result object with all components
   result <- pca_result
