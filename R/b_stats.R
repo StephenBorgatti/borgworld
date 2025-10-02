@@ -53,30 +53,16 @@ bsummarize <- function(df) {
     as.data.frame()
 }
 
-#' Correlation with pairwise complete obs and auto numeric selection
-#' @param x A vector, matrix, data.frame, or tibble.
-#' @param y Optional vector/matrix/data.frame/tibble for cross-correlation.
-#' @param use Missing-data handling; default "pairwise.complete.obs".
-#' @param ... Passed to [stats::cor()] (e.g., method = "spearman").
-#' @return Correlation vector/matrix as in [stats::cor()].
+#' Mean with na.rm = TRUE by default
+#'
+#' Wrapper around base::mean() that always removes NAs unless overridden.
+#'
+#' @param x A numeric vector.
+#' @param ... Additional arguments passed to [base::mean()].
+#' @return Numeric mean of x.
 #' @export
-bcor <- function(x, y = NULL, use = "pairwise.complete.obs", ...) {
-
-  select_numeric <- function(obj) {
-    if (is.data.frame(obj)) {
-      keep <- vapply(obj, is.numeric, logical(1))
-      obj  <- obj[ , keep, drop = FALSE]
-      if (ncol(obj) == 0L) stop("No numeric columns in data frame.", call. = FALSE)
-    } else if (is.vector(obj) && !is.numeric(obj)) {
-      stop("Vector input must be numeric.", call. = FALSE)
-    }
-    obj
-  }
-
-  x <- select_numeric(x)
-  if (!is.null(y)) y <- select_numeric(y)
-
-  stats::cor(x = x, y = y, use = use, ...)
+bmean <- function(x, ...) {
+  mean(x, na.rm = TRUE, ...)
 }
 
 #' Sum with na.rm = TRUE by default
@@ -90,16 +76,3 @@ bcor <- function(x, y = NULL, use = "pairwise.complete.obs", ...) {
 bsum <- function(x, ...) {
   sum(x, na.rm = TRUE, ...)
 }
-
-#' Mean with na.rm = TRUE by default
-#'
-#' Wrapper around base::mean() that always removes NAs unless overridden.
-#'
-#' @param x A numeric vector.
-#' @param ... Additional arguments passed to [base::mean()].
-#' @return Numeric mean of x.
-#' @export
-bmean <- function(x, ...) {
-  mean(x, na.rm = TRUE, ...)
-}
-
