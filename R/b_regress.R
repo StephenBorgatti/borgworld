@@ -55,7 +55,6 @@ bregress <- function(formula, data, robust = FALSE) {
     conf_int <- confint(model, level = 0.95)
   }
 
-  # [Rest of function remains the same...]
   # Extract basic information
   n <- nobs(model)
   k <- length(coef(model)) - 1
@@ -92,44 +91,60 @@ bregress <- function(formula, data, robust = FALSE) {
     cat("\nLinear regression with robust standard errors\n")
   }
 
-  # Print ANOVA table
-  cat("\n")
-  cat("      Source |       SS           df       MS      Number of obs   =",
-      sprintf("%9d", n), "\n")
-  cat("-------------+----------------------------------   F(", df_model, ", ",
-      df_resid, ")", sprintf("%7s", ""), "=",
-      sprintf("%9.2f", f_stat), "\n", sep = "")
-  cat("       Model |", sprintf("%11.7g", ss_model),
-      sprintf("%10d", df_model),
-      sprintf("%11.7g", ms_model),
-      "   Prob > F        =",
-      sprintf("%10.4f", f_pvalue), "\n")
-  cat("    Residual |", sprintf("%11.7g", ss_resid),
-      sprintf("%10d", df_resid),
-      sprintf("%11.7g", ms_resid),
-      "   R-squared       =",
-      sprintf("%10.4f", r_squared), "\n")
-  cat("-------------+----------------------------------   Adj R-squared   =",
-      sprintf("%10.4f", adj_r_squared), "\n")
-  cat("       Total |", sprintf("%11.7g", ss_total),
-      sprintf("%10d", df_total),
-      sprintf("%11.7g", ss_total/df_total),
-      "   Root MSE        =",
-      sprintf("%10g", root_mse), "\n")
+  # Print ANOVA table with fixed column widths (Stata-like)
+  w_src <- 12; w_ss <- 14; w_df <- 9; w_ms <- 14
+
+  header <- sprintf("%*s | %*s %*s %*s   Number of obs   = %9d",
+                    w_src, "Source", w_ss, "SS", w_df, "df", w_ms, "MS", n)
+  cat("\n", header, "\n", sep = "")
+  cat(paste0(rep("-", nchar(header)), collapse = ""), " \n", sep = "")
+
+  row_fmt <- function(src, ss, df, ms, tail = "") {
+    ss_s <- formatC(ss, digits = 7, format = "g")
+    ms_s <- formatC(ms, digits = 7, format = "g")
+    df_s <- formatC(df, format = "d")
+    sprintf("%*s | %*s %*s %*s%s",
+            w_src, src,
+            w_ss, ss_s,
+            w_df, df_s,
+            w_ms, ms_s,
+            tail)
+  }
+
+  cat(row_fmt("Model",    ss_model,  df_model, ms_model,
+              sprintf("   Prob > F        = %10.4f", f_pvalue)), "\n")
+  cat(row_fmt("Residual", ss_resid,  df_resid, ms_resid,
+              sprintf("   R-squared       = %10.4f", r_squared)), "\n")
+
+  sep <- sprintf("%*s+%s", w_src, "",
+                 paste0(rep("-", w_ss + 1 + w_df + 1 + w_ms + 2), collapse = ""))
+  cat(sep, sprintf("   Adj R-squared   = %10.4f", adj_r_squared), "\n", sep = "")
+
+  cat(row_fmt("Total",    ss_total,  df_total, ss_total/df_total,
+              sprintf("   Root MSE        = %10.3f", root_mse)), "\n")
 
   # Print coefficient table
   cat("\n")
   cat("------------------------------------------------------------------------------\n")
 
-  # Determine dependent variable name
+  # Determine dependent variable name and truncate if needed
   dep_var <- as.character(formula[[2]])
+  if (nchar(dep_var) > 12) {
+    dep_var <- substr(dep_var, 1, 12)
+  }
 
-  # Header for coefficient table
-  cat(sprintf("%12s", dep_var), "| Coefficient  Std. err.      t    P>|t|     [95% conf. interval]\n")
+  # Header for coefficient table - note the exact spacing
+  cat(sprintf("%12s", dep_var), " | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]\n", sep = "")
   cat("-------------+----------------------------------------------------------------\n")
 
-  # Print each coefficient row
+  # Print each coefficient row with exact spacing to match Stata
   for (i in 1:length(coef_names)) {
+    # Truncate variable name if too long
+    var_name <- coef_names[i]
+    if (nchar(var_name) > 12) {
+      var_name <- substr(var_name, 1, 12)
+    }
+
     coef_val <- coef_summary[i, 1]
     se_val <- coef_summary[i, 2]
     t_val <- coef_summary[i, 3]
@@ -137,14 +152,22 @@ bregress <- function(formula, data, robust = FALSE) {
     ci_low <- conf_int[i, 1]
     ci_high <- conf_int[i, 2]
 
-    cat(sprintf("%12s", substr(coef_names[i], 1, 12)), "|",
-        sprintf("%11.7g", coef_val),
-        sprintf("%11.7g", se_val),
+    # Handle very small p-values
+    if (p_val < 0.0005) {
+      p_str <- "   0.000"
+    } else {
+      p_str <- sprintf("%8.3f", p_val)
+    }
+
+    # Print with exact spacing
+    cat(sprintf("%12s", var_name), " | ",
+        sprintf("%10.7g", coef_val), "  ",
+        sprintf("%10.7g", se_val),
         sprintf("%8.2f", t_val),
-        sprintf("%8.3f", p_val),
-        sprintf("%13.7g", ci_low),
-        sprintf("%11.7g", ci_high),
-        "\n")
+        p_str, "    ",
+        sprintf("%10.7g", ci_low), "  ",
+        sprintf("%10.7g", ci_high),
+        "\n", sep = "")
   }
   cat("------------------------------------------------------------------------------\n")
 

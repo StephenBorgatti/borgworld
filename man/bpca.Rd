@@ -2,42 +2,91 @@
 % Please edit documentation in R/b_pca.R
 \name{bpca}
 \alias{bpca}
-\title{Principal Component Analysis}
+\title{Perform PCA with Social Science Conventions}
 \usage{
-bpca(data, id = NULL, scale = TRUE)
+bpca(data, max = NULL, mineigen = 1, standardize_scores = TRUE)
 }
 \arguments{
-\item{data}{A data frame containing numeric variables for PCA}
+\item{data}{A numeric matrix or data frame containing the variables to analyze}
 
-\item{id}{Character string naming the column to use as labels (optional)}
+\item{max}{Integer; maximum number of components to retain.
+Default is NULL (returns all components)}
 
-\item{scale}{Logical, whether to scale variables to unit variance (default = TRUE)}
+\item{mineigen}{Numeric; minimum eigenvalue for component retention.
+Default is 1 (Kaiser criterion). Components with eigenvalues below this
+threshold are excluded from loadings and scores but shown in eigenvalue table.}
+
+\item{standardize_scores}{Logical; if TRUE (default), standardizes component
+scores to have variance = 1 (matching Stata's default behavior).
+If FALSE, returns raw scores with variance equal to eigenvalues.}
 }
 \value{
-An object of class "bpca" containing:
-\itemize{
-\item scores: The principal component scores (same as x)
-\item loadings: The loadings matrix (same as rotation)
-\item correlation: Correlation matrix of the numeric variables
-\item var_explained: Percentage of variance explained by each PC
-\item sdev: Standard deviations of the principal components
-\item numeric_data: The numeric data used for PCA
-\item All standard prcomp components (x, rotation, center, scale, sdev)
-}
+An object of class \code{bpca} containing:
+\item{eigenvalues}{Numeric vector of eigenvalues of the correlation matrix}
+\item{variance_explained}{Data frame with variance explained by each component}
+\item{loadings}{Matrix of component loadings (correlations between variables and PCs)}
+\item{eigenvectors}{Matrix of raw eigenvectors (component coefficients)}
+\item{scores}{Matrix of component scores (standardized or raw based on parameter)}
+\item{scores_raw}{Matrix of raw component scores (always unstandardized)}
+\item{communalities}{Numeric vector of communalities for each variable}
+\item{correlation_matrix}{The correlation matrix used for PCA}
+\item{standardized_data}{The standardized data matrix}
+\item{retained}{Number of components retained based on mineigen criterion}
 }
 \description{
-Performs PCA on numeric variables in a data frame
+Performs Principal Component Analysis and returns results in the format
+expected by social scientists familiar with Stata/SPSS conventions.
+Unlike R's built-in functions, this returns loadings as correlations
+between variables and components, and can optionally standardize scores.
+}
+\details{
+This function bridges the gap between R's PCA implementations and the
+conventions used in social science software like Stata and SPSS:
+
+\itemize{
+\item Loadings are computed as eigenvector * sqrt(eigenvalue), giving
+correlations between variables and components
+\item Scores are standardized by default to have unit variance
+\item Output includes communalities and Kaiser criterion
+\item Terminology matches social science conventions
+}
+
+The function uses the correlation matrix (variables standardized with n-1)
+which is standard in both R and Stata/SPSS for correlation-based PCA.
 }
 \examples{
-# Without ID variable
-p <- bpca(iris[,1:4])
-summary(p)
+# Create example data with correlation structure
+set.seed(123)
+n <- 100
+data <- matrix(rnorm(n * 5), nrow = n, ncol = 5)
+colnames(data) <- paste0("Var", 1:5)
+data[, 2] <- data[, 1] * 0.7 + rnorm(n) * 0.5
+data[, 3] <- data[, 1] * 0.4 + data[, 2] * 0.4 + rnorm(n) * 0.5
 
-# With ID variable - exclude it from PCA but use for labels
-data_with_id <- cbind(id = paste0("S", 1:150), iris[,1:4])
-p <- bpca(data_with_id, id = "id")
+# Run PCA with Kaiser criterion (default)
+result <- bpca(data)
 
-# Use with bpcabiplot for visualization
-# bpcabiplot(p)
+# Run PCA with custom eigenvalue threshold
+result <- bpca(data, mineigen = 0.7)
 
+# Run PCA with maximum 3 components
+result <- bpca(data, max = 3)
+
+# Access loadings (correlations)
+result$loadings
+
+# Run PCA with raw scores
+result_raw <- bpca(data, max = 3, standardize_scores = FALSE)
+
+}
+\references{
+Jolliffe, I. T. (2002). Principal Component Analysis (2nd ed.). Springer.
+
+Hair, J. F., Black, W. C., Babin, B. J., & Anderson, R. E. (2019).
+Multivariate Data Analysis (8th ed.). Cengage Learning.
+}
+\seealso{
+\code{\link{prcomp}} for R's SVD-based PCA implementation,
+\code{\link{princomp}} for R's eigen-based PCA implementation,
+\code{\link{bcompare_pca}} for converting between R and social science conventions
 }
