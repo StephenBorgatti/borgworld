@@ -37,22 +37,6 @@ bclip <- function(df) {
 bsnip <- bclip
 
 
-#' Read a tabular block from the clipboard
-#' @param header Logical. First row has names. Default TRUE.
-#' @param sep Field separator. Default tab.
-#' @return data.frame
-#' @export
-#' @examples
-#' \dontrun{
-#' # Copy a range in Excel, then:
-#' bpaste()
-#' }
-bpaste <- function(header = TRUE, sep = "\t") {
-  utils::read.table("clipboard",
-                    header = header, sep = sep,
-                    stringsAsFactors = FALSE, check.names = FALSE)
-}
-
 
 #' Normalize Windows paths to forward slashes
 #'
