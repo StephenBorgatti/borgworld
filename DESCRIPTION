@@ -13,14 +13,18 @@ Depends: R (>= 4.1.0)
 Imports:
     dplyr,
     ggplot2,
+    graphics,
+    grDevices,
     MASS,
     rlang,
     sandwich,
     stats,
-    tidyr
+    tidyr,
+    utils
 URL: https://github.com/StephenBorgatti/borgworld
 BugReports: https://github.com/StephenBorgatti/borgworld/issues
 Suggests: 
     palmerpenguins,
     plotrix,
     testthat
+LazyData: false
