@@ -444,7 +444,7 @@ bcorresp <- function(data,
       if (graph.type %in% c("row", "all")) {
         if (graph.type == "all") {
           # Ask user to press enter for next plot
-          graphics::readline(prompt = "Press [enter] to see next plot")
+          readline(prompt = "Press [enter] to see next plot")
         }
 
         graphics::plot(row_coords[, axes[1]], row_coords[, axes[2]],
@@ -462,7 +462,7 @@ bcorresp <- function(data,
       # Column plot
       if (graph.type %in% c("col", "all")) {
         if (graph.type == "all") {
-          graphics::readline(prompt = "Press [enter] to see next plot")
+          readline(prompt = "Press [enter] to see next plot")
         }
 
         graphics::plot(col_coords[, axes[1]], col_coords[, axes[2]],
@@ -480,7 +480,7 @@ bcorresp <- function(data,
       # Scree plot
       if (graph.type %in% c("scree", "all")) {
         if (graph.type == "all") {
-          graphics::readline(prompt = "Press [enter] to see next plot")
+          readline(prompt = "Press [enter] to see next plot")
         }
 
         graphics::barplot(variance_explained,
