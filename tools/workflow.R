@@ -16,3 +16,5 @@ devtools::check()     # Ctrl+Shift+E
 usethis::use_version("minor")  # or "minor", "major", "dev"
 
 # 7. Commit and push via Git tab
+
+##occasionally
