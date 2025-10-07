@@ -1,16 +1,18 @@
-# 1. Document the package (generates man files from roxygen)
-devtools::document()
+# 1. Load your changes immediately to test them
+devtools::load_all()  # Ctrl+Shift+L
 
-# 2. Check if everything is working (optional but recommended)
-devtools::check()  # Full check - takes longer
-# OR for a quicker check:
-#devtools::test()  # If you have tests
-devtools::load_all()  # Just load to test functions work
+# 2. Test your function informally in console
+#your_function(test_data)
 
-# 3. Install the package locally
-devtools::install()
+# 3. If roxygen comments changed, regenerate docs
+devtools::document()  # Ctrl+Shift+D
 
-# 4. Build the package (if you want to share it)
-devtools::build()  # Creates a .tar.gz file
-devtools::build(binary = TRUE)  # Creates a binary package (optional)
+# 4. Iterate on 1-3 until happy, then...
 
+# 5. Run checks (can be slow, so not every edit)
+devtools::check()     # Ctrl+Shift+E
+
+# 6. If releasing/milestone, update version in DESCRIPTION
+usethis::use_version("minor")  # or "minor", "major", "dev"
+
+# 7. Commit and push via Git tab
