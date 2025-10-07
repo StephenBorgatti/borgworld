@@ -32,25 +32,54 @@ bcoltonames <- function(df, col = NULL, remove = TRUE) {
       return(df)
     }
 
-    # Try to find a suitable column, checking first column first (most common case)
+    # Common patterns for ID/name columns
+    id_patterns <- c("^id$", "^ID$", "^name$", "^Name$",
+                     "^row\\.?names?$", "^sample$", "^Sample$",
+                     "^label$", "^Label$", "^identifier$", "^key$")
+
+    # Try to find a suitable column
     suitable_col <- NULL
 
-    for (i in 1:ncol(df)) {
-      col_data <- df[[i]]
-      col_name <- names(df)[i]
+    # First, check for columns matching common ID patterns
+    for (pattern in id_patterns) {
+      matches <- grep(pattern, names(df), ignore.case = FALSE)
+      if (length(matches) > 0) {
+        # Check if this column meets our criteria
+        col_data <- df[[matches[1]]]
+        has_no_duplicates <- !any(duplicated(col_data))
+        has_no_nas <- !any(is.na(col_data))
 
-      # Check criteria: empty/blank name OR non-numeric content
-      is_suitable <- (is.null(col_name) ||
-                        trimws(col_name) == "" ||
-                        !is.numeric(col_data))
+        if (has_no_duplicates && has_no_nas) {
+          suitable_col <- matches[1]
+          message(sprintf("Auto-selected column %d (%s) for row names (matched ID pattern)",
+                          suitable_col, names(df)[suitable_col]))
+          break
+        }
+      }
+    }
 
-      # Also check for no duplicates and no NAs
-      has_no_duplicates <- !any(duplicated(col_data))
-      has_no_nas <- !any(is.na(col_data))
+    # If no ID pattern matched, fall back to original heuristics
+    if (is.null(suitable_col)) {
+      for (i in 1:ncol(df)) {
+        col_data <- df[[i]]
+        col_name <- names(df)[i]
 
-      if (is_suitable && has_no_duplicates && has_no_nas) {
-        suitable_col <- i
-        break  # Use first suitable column found
+        # Check criteria: empty/blank name OR non-numeric content
+        is_suitable <- (is.null(col_name) ||
+                          trimws(col_name) == "" ||
+                          !is.numeric(col_data))
+
+        # Also check for no duplicates and no NAs
+        has_no_duplicates <- !any(duplicated(col_data))
+        has_no_nas <- !any(is.na(col_data))
+
+        if (is_suitable && has_no_duplicates && has_no_nas) {
+          suitable_col <- i
+          message(sprintf("Auto-selected column %d (%s) for row names",
+                          suitable_col,
+                          ifelse(names(df)[i] == "", "[unnamed]", names(df)[i])))
+          break  # Use first suitable column found
+        }
       }
     }
 
@@ -61,9 +90,6 @@ bcoltonames <- function(df, col = NULL, remove = TRUE) {
     }
 
     col <- suitable_col
-    message(sprintf("Auto-selected column %d (%s) for row names",
-                    col,
-                    ifelse(names(df)[col] == "", "[unnamed]", names(df)[col])))
   }
 
   # Convert col to numeric index if it's a name

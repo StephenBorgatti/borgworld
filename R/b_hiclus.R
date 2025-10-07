@@ -5,7 +5,8 @@
 #' @param data A data frame containing a square proximity matrix (similarities or dissimilarities).
 #'        Row names and column names are used as labels if available.
 #' @param type Character string specifying the type of proximity measure;
-#'        "similarities" (default) or "dissimilarities" (can be abbreviated to "sim" or "diss")
+#'        "similarities" or "dissimilarities" (can be abbreviated to "sim" or "diss").
+#'        This parameter is required with no default to ensure explicit specification.
 #' @param method Linkage method: "average" (default), "single", or "complete" (can be abbreviated)
 #' @param labels Optional character vector of item labels. If NULL, uses row names from data
 #' @param print_dendrogram Logical; whether to print ASCII dendrogram (default: TRUE)
@@ -14,6 +15,9 @@
 #' @return A list of class "bhiclus" containing:
 #'   \item{partition_table}{Matrix with items as rows and nested partitions as columns}
 #'   \item{hclust_obj}{hclust object for further analysis}
+#'   \item{moca}{Data frame of measures of cluster adequacy from bmoca, including:
+#'              n_clusters, Corr, Gamma, Modularity, and Silhouette}
+#'   \item{cophenetic}{Cophenetic correlation coefficient from bcophenetic}
 #'   \item{labels}{Character vector of item labels}
 #'   \item{type}{Type of proximity measure used}
 #'   \item{method}{Linkage method used}
@@ -30,10 +34,15 @@
 #' )
 #' rownames(sim_df) <- colnames(sim_df)
 #'
+#' # Note: type parameter is required
 #' result <- bhiclus(sim_df, type = "sim")
+#'
+#' # Or with dissimilarities
+#' dissim_df <- as.data.frame(as.matrix(dist(iris[,1:4])))
+#' result2 <- bhiclus(dissim_df, type = "diss")
 
 bhiclus <- function(data,
-                    type = c("similarities", "dissimilarities"),
+                    type,  # No default - force user to specify
                     method = c("average", "single", "complete"),
                     labels = NULL,
                     print_dendrogram = TRUE,
@@ -64,7 +73,7 @@ bhiclus <- function(data,
   n <- nrow(proximity_matrix)
 
   # Match arguments with partial matching
-  type <- match.arg(type)
+  type <- match.arg(type, c("similarities", "dissimilarities"))
   method <- match.arg(method)
 
   # Set default labels if still not provided
@@ -81,7 +90,8 @@ bhiclus <- function(data,
     stop("Number of labels must match the dimension of the proximity matrix")
   }
 
-  # Convert similarities to dissimilarities if needed
+  # Store original proximity matrix for MOCA (before conversion)
+  # But convert similarities to dissimilarities if needed for MOCA
   if (type == "similarities") {
     # Find maximum value (excluding diagonal for safety)
     temp_mat <- proximity_matrix
@@ -93,12 +103,21 @@ bhiclus <- function(data,
   # Ensure diagonal is zero
   diag(proximity_matrix) <- 0
 
+  # Now proximity_matrix is in dissimilarity form
+
   # Convert to dist object and perform hierarchical clustering
   dist_obj <- as.dist(proximity_matrix)
   hclust_obj <- hclust(dist_obj, method = method)
 
   # Create partition table
   partition_table <- create_partition_table(hclust_obj, n, labels)
+
+  # Calculate measures of cluster adequacy
+  # Always pass type = "d" since we converted to dissimilarities above
+  moca_results <- bmoca(proximity_matrix, partition_table, type = "d")
+
+  # Calculate cophenetic correlation
+  cophenet_corr <- bcophenetic(proximity_matrix, hclust_obj, type = "d")
 
   # Print ASCII dendrogram if requested
   if (print_dendrogram) {
@@ -114,6 +133,8 @@ bhiclus <- function(data,
   result <- list(
     partition_table = partition_table,
     hclust_obj = hclust_obj,
+    moca = moca_results,
+    cophenetic = cophenet_corr,
     labels = labels,
     type = type,
     method = method
@@ -121,6 +142,89 @@ bhiclus <- function(data,
 
   class(result) <- "bhiclus"
   return(result)
+}
+
+#' Cophenetic Correlation Coefficient
+#'
+#' Calculate the cophenetic correlation coefficient for a hierarchical clustering.
+#' This measures how faithfully the dendrogram preserves the pairwise distances
+#' between the original observations.
+#'
+#' @param proximity_matrix A square matrix of proximities (either similarities or dissimilarities).
+#' @param hclust_obj An hclust object from hierarchical clustering.
+#' @param type Character string specifying the type of proximity measure;
+#'        "similarities" or "dissimilarities" (can be abbreviated to "sim" or "diss").
+#'        This parameter is required with no default to ensure explicit specification.
+#'
+#' @return A single numeric value: the cophenetic correlation coefficient.
+#'        Higher values (closer to 1) indicate that the dendrogram structure
+#'        better preserves the original proximity relationships.
+#'
+#' @details
+#' The cophenetic correlation is calculated between:
+#' \itemize{
+#'   \item The original proximity matrix (lower triangle)
+#'   \item The cophenetic distances from the dendrogram (lower triangle)
+#' }
+#'
+#' For dissimilarity data, a positive correlation is expected (small distances
+#' cluster together). For similarity data, the correlation is negated so that
+#' higher values always indicate better fit.
+#'
+#' @export
+#' @examples
+#' # Create a distance matrix
+#' dist_mat <- as.matrix(dist(iris[,1:4]))
+#'
+#' # Perform hierarchical clustering
+#' hc <- hclust(as.dist(dist_mat))
+#'
+#' # Calculate cophenetic correlation
+#' bcophenetic(dist_mat, hc, type = "diss")
+#'
+#' @seealso \code{\link{bhiclus}} which automatically calls bcophenetic
+bcophenetic <- function(proximity_matrix, hclust_obj, type) {
+  # Input validation
+  if (!is.matrix(proximity_matrix) || nrow(proximity_matrix) != ncol(proximity_matrix)) {
+    stop("proximity_matrix must be a square matrix")
+  }
+
+  if (!inherits(hclust_obj, "hclust")) {
+    stop("hclust_obj must be an hclust object")
+  }
+
+  # Match type argument
+  type <- match.arg(type, c("similarities", "dissimilarities"))
+
+  # Get lower triangles
+  prox_lower <- proximity_matrix[lower.tri(proximity_matrix)]
+  coph_dist <- cophenetic(hclust_obj)
+  coph_lower <- coph_dist[lower.tri(coph_dist)]
+
+  # Check that dimensions match
+  if (length(prox_lower) != length(coph_lower)) {
+    warning("Dimension mismatch between proximity matrix and cophenetic distances")
+    return(NA)
+  }
+
+  # Calculate correlation with error handling
+  cophenet_corr <- suppressWarnings(cor(prox_lower, coph_lower, use = "complete.obs"))
+
+  # Check for NA
+  if (is.na(cophenet_corr)) {
+    warning("Could not calculate cophenetic correlation")
+    return(NA)
+  }
+
+  # Adjust sign based on type
+  if (type == "dissimilarities") {
+    # For dissimilarities, expect positive correlation
+    return(cophenet_corr)
+  } else {
+    # For similarities, expect negative correlation with cophenetic distances
+    # So negate to make higher values better
+    return(-1 * cophenet_corr)
+  }
 }
 
 #' Create partition table from hclust object
@@ -305,10 +409,22 @@ print.bhiclus <- function(x, ...) {
 
   cat("Number of items:", length(x$labels), "\n")
   cat("Linkage method:", x$method, "\n")
-  cat("Proximity type:", x$type, "\n\n")
+  cat("Proximity type:", x$type, "\n")
+  cat("Cophenetic correlation:", round(x$cophenetic, 3), "\n\n")
 
   cat("Partition Table:\n")
   print(x$partition_table)
+
+  cat("\nMeasures of Cluster Adequacy (MOCA):\n")
+  # Round the numeric columns for display
+  moca_display <- x$moca
+  numeric_cols <- c("Corr", "Gamma", "Modularity", "Silhouette")
+  for (col in numeric_cols) {
+    if (col %in% colnames(moca_display)) {
+      moca_display[[col]] <- round(moca_display[[col]], 3)
+    }
+  }
+  print(moca_display)
 
   invisible(x)
 }
@@ -335,6 +451,14 @@ summary.bhiclus <- function(object, ...) {
   cat("  Mean:", round(mean(heights), 2), "\n")
   cat("  3rd Qu:", round(quantile(heights, 0.75), 2), "\n")
   cat("  Max:", round(max(heights), 2), "\n")
+
+  # MOCA summary
+  cat("\nCluster Adequacy (Corr) summary:\n")
+  corr_values <- object$moca$Corr
+  cat("  Min:", round(min(corr_values), 3), "\n")
+  cat("  Max:", round(max(corr_values), 3), "\n")
+  cat("  Best partition:", rownames(object$moca)[which.max(corr_values)],
+      "with", object$moca$n_clusters[which.max(corr_values)], "clusters\n")
 
   invisible(object)
 }

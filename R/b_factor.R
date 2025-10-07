@@ -48,6 +48,14 @@ bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
     stop("Package 'psych' is required. Please install it.")
   }
 
+  # drop charater variables
+  nvar <- ncol(data)
+  data <-  data |>
+    select(where(is.numeric))
+  if (nvar != ncol(data)) {
+    print('Character variable removed')
+  }
+
   # Compute correlation matrix and eigenvalues once
   cor_mat <- cor(data, use = "pairwise.complete.obs")
   eigen_result <- eigen(cor_mat)

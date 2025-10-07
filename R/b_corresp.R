@@ -92,12 +92,38 @@ bcorresp <- function(data,
     stop("Data must be a matrix or data frame")
   }
 
-  # Convert to matrix if necessary
-  if (is.data.frame(data)) {
-    data <- as.matrix(data)
-  }
-  if (mode(data) != "numeric") {
-    stop("Data matrix is not numeric. Remove non-numeric columns.")
+  # Handle different input types
+  if (is.matrix(data)) {
+    # Matrix is already homogeneous - just check it's numeric
+    if (mode(data) != "numeric") {
+      stop("Matrix must contain numeric values")
+    }
+    # Keep as matrix, no filtering needed
+  } else if (is.data.frame(data)) {
+    # For data frames, filter to numeric columns only
+    original_vars <- names(data)
+    numeric_data <- data |>
+      dplyr::select(where(is.numeric))
+
+    dropped_vars <- setdiff(original_vars, names(numeric_data))
+
+    if (length(dropped_vars) > 0) {
+      if (length(dropped_vars) == 1) {
+        message(sprintf("Dropped 1 non-numeric variable: %s", dropped_vars))
+      } else {
+        message(sprintf("Dropped %d non-numeric variables: %s",
+                        length(dropped_vars),
+                        paste(dropped_vars, collapse = ", ")))
+      }
+    }
+
+    # Check if any numeric columns remain
+    if (ncol(numeric_data) == 0) {
+      stop("No numeric variables found in the data frame")
+    }
+
+    # Convert to matrix for analysis
+    data <- as.matrix(numeric_data)
   }
 
   # Check for negative values

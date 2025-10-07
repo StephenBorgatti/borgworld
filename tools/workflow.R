@@ -14,7 +14,13 @@ devtools::check()     # Ctrl+Shift+E
 
 # 6. If releasing/milestone, update version in DESCRIPTION
 usethis::use_version("minor")  # or "minor", "major", "dev"
+usethis::use_version("patch")  # or "minor", "major", "dev"
 
 # 7. Commit and push via Git tab
 
 ##occasionally
+# Periodically, for full testing:
+devtools::install()   # Install the package
+# Restart R (Session > Restart R in RStudio)
+library(borgworld)    # Test as users would use it
+help(package = "borgworld")  # Check documentation

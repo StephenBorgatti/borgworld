@@ -6,7 +6,7 @@
 \usage{
 bhiclus(
   data,
-  type = c("similarities", "dissimilarities"),
+  type,
   method = c("average", "single", "complete"),
   labels = NULL,
   print_dendrogram = TRUE,
@@ -18,7 +18,8 @@ bhiclus(
 Row names and column names are used as labels if available.}
 
 \item{type}{Character string specifying the type of proximity measure;
-"similarities" (default) or "dissimilarities" (can be abbreviated to "sim" or "diss")}
+"similarities" or "dissimilarities" (can be abbreviated to "sim" or "diss").
+This parameter is required with no default to ensure explicit specification.}
 
 \item{method}{Linkage method: "average" (default), "single", or "complete" (can be abbreviated)}
 
@@ -32,6 +33,9 @@ Row names and column names are used as labels if available.}
 A list of class "bhiclus" containing:
 \item{partition_table}{Matrix with items as rows and nested partitions as columns}
 \item{hclust_obj}{hclust object for further analysis}
+\item{moca}{Data frame of measures of cluster adequacy from bmoca, including:
+n_clusters, Corr, Gamma, Modularity, and Silhouette}
+\item{cophenetic}{Cophenetic correlation coefficient from bcophenetic}
 \item{labels}{Character vector of item labels}
 \item{type}{Type of proximity measure used}
 \item{method}{Linkage method used}
@@ -50,5 +54,10 @@ sim_df <- data.frame(
 )
 rownames(sim_df) <- colnames(sim_df)
 
+# Note: type parameter is required
 result <- bhiclus(sim_df, type = "sim")
+
+# Or with dissimilarities
+dissim_df <- as.data.frame(as.matrix(dist(iris[,1:4])))
+result2 <- bhiclus(dissim_df, type = "diss")
 }
