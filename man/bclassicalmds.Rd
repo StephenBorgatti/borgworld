@@ -4,21 +4,17 @@
 \alias{bclassicalmds}
 \title{Classical Multidimensional Scaling with Similarity/Dissimilarity Input}
 \usage{
-bclassicalmds(
-  x,
-  type = c("s", "d"),
-  k = 2,
-  add = FALSE,
-  plot = TRUE,
-  labels = NULL
-)
+bclassicalmds(x, type, dim = 2, add = FALSE, plot = TRUE, labels = NULL)
 }
 \arguments{
 \item{x}{A square matrix of similarities or dissimilarities}
 
-\item{type}{Character string, either "s" for similarity or "d" for dissimilarity}
+\item{type}{Character string specifying the input type. Must be one of
+"similarities", "dissimilarities", or any unambiguous abbreviation
+(e.g., "s", "sim", "d", "dis", "diss"). If missing, the user will be
+prompted to specify.}
 
-\item{k}{Number of dimensions for the MDS solution (default = 2)}
+\item{dim}{Number of dimensions for the MDS solution (default = 2)}
 
 \item{add}{Logical, whether to add a constant to make eigenvalues non-negative (default = FALSE)}
 
@@ -39,10 +35,12 @@ and optionally produces a plot of the results.
 }
 \examples{
 # Using dissimilarity matrix
-bclassicalmds(as.matrix(dist(USArrests)), type="d", k=2)
+bclassicalmds(as.matrix(dist(USArrests)), "d", dim=2)
+bclassicalmds(as.matrix(dist(USArrests)), "dissimilarities", dim=2)
 
-# Using similarity matrix (convert correlation to similarity)
+# Using similarity matrix (correlation)
 cor_mat <- cor(mtcars)
-bclassicalmds(cor_mat, type="s", k=2)
+bclassicalmds(cor_mat, "s", dim=2)
+bclassicalmds(cor_mat, "similarities", dim=3, plot=FALSE)
 
 }

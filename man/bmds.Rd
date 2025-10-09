@@ -2,14 +2,28 @@
 % Please edit documentation in R/b_mds.R
 \name{bmds}
 \alias{bmds}
-\title{Unified interface for MDS methods (Alternative with flexible matching)}
+\title{Unified Interface for MDS Methods}
 \usage{
-bmds(d, k = 2, method = "classical", ...)
+bmds(
+  x,
+  type,
+  dim = 2,
+  method = "classical",
+  plot = TRUE,
+  labels = NULL,
+  verbose = TRUE,
+  ...
+)
 }
 \arguments{
-\item{d}{A distance matrix or dist object}
+\item{x}{A square matrix of similarities or dissimilarities}
 
-\item{k}{Integer specifying the number of dimensions. Default is 2.}
+\item{type}{Character string specifying the input type. Must be one of
+"similarities", "dissimilarities", or any unambiguous abbreviation
+(e.g., "s", "sim", "d", "dis", "diss"). If missing, the user will be
+prompted to specify.}
+
+\item{dim}{Integer specifying the number of dimensions. Default is 2.}
 
 \item{method}{Character string specifying the MDS method. Accepts:
 \itemize{
@@ -20,12 +34,31 @@ or any abbreviation starting with "n", "o", or "i"
 }
 Default is "classical".}
 
-\item{...}{Additional arguments passed to the underlying MDS function.}
+\item{plot}{Logical, whether to produce a plot (default = TRUE)}
+
+\item{labels}{Optional character vector of labels for points}
+
+\item{verbose}{Logical, whether to print method selection info (default = TRUE)}
+
+\item{...}{Additional arguments passed to the underlying MDS function}
 }
 \value{
-An MDS object from the selected method.
+An MDS object from the selected method with additional attributes:
+\item{mds.method}{The MDS method used ("classical" or "nonmetric")}
 }
 \description{
 Wrapper function that provides a single interface for both classical and
 non-metric MDS with flexible method name matching.
+}
+\examples{
+# Basic usage
+dist_mat <- as.matrix(dist(USArrests))
+bmds(dist_mat, "d")  # Will use classical MDS by default
+bmds(dist_mat, "dissimilarities", method = "n")  # Non-metric MDS
+
+# With correlation matrix
+cor_mat <- cor(mtcars)
+bmds(cor_mat, "s", dim = 3)
+bmds(cor_mat, "sim", method = "nonmetric", dim = 2)
+
 }

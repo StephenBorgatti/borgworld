@@ -4,8 +4,11 @@
 #' and optionally produces a plot of the results.
 #'
 #' @param x A square matrix of similarities or dissimilarities
-#' @param type Character string, either "s" for similarity or "d" for dissimilarity
-#' @param k Number of dimensions for the MDS solution (default = 2)
+#' @param type Character string specifying the input type. Must be one of
+#'   "similarities", "dissimilarities", or any unambiguous abbreviation
+#'   (e.g., "s", "sim", "d", "dis", "diss"). If missing, the user will be
+#'   prompted to specify.
+#' @param dim Number of dimensions for the MDS solution (default = 2)
 #' @param add Logical, whether to add a constant to make eigenvalues non-negative (default = FALSE)
 #' @param plot Logical, whether to produce a plot (default = TRUE)
 #' @param labels Optional character vector of labels for points
@@ -22,18 +25,44 @@
 #'
 #' @examples
 #' # Using dissimilarity matrix
-#' bclassicalmds(as.matrix(dist(USArrests)), type="d", k=2)
+#' bclassicalmds(as.matrix(dist(USArrests)), "d", dim=2)
+#' bclassicalmds(as.matrix(dist(USArrests)), "dissimilarities", dim=2)
 #'
-#' # Using similarity matrix (convert correlation to similarity)
+#' # Using similarity matrix (correlation)
 #' cor_mat <- cor(mtcars)
-#' bclassicalmds(cor_mat, type="s", k=2)
+#' bclassicalmds(cor_mat, "s", dim=2)
+#' bclassicalmds(cor_mat, "similarities", dim=3, plot=FALSE)
 #'
-bclassicalmds <- function(x, type = c("s", "d"), k = 2, add = FALSE,
+bclassicalmds <- function(x, type, dim = 2, add = FALSE,
                           plot = TRUE, labels = NULL) {
-  # [Rest of function body remains the same as before]
-  # Check inputs
-  type <- match.arg(type)
 
+  # Check if type is provided, if not, prompt user
+  if (missing(type)) {
+    if (interactive()) {
+      cat("Please specify the type of your input matrix:\n")
+      cat("  1. similarities\n")
+      cat("  2. dissimilarities\n")
+      response <- readline("Enter your choice (1 or 2, or 's'/'d'): ")
+
+      response <- tolower(trimws(response))
+      if (response %in% c("1", "s", "sim", "similarities")) {
+        type <- "similarities"
+      } else if (response %in% c("2", "d", "dis", "diss", "dissimilarities")) {
+        type <- "dissimilarities"
+      } else {
+        stop("Invalid choice. Please specify 'similarities' or 'dissimilarities'")
+      }
+      cat("Using type:", type, "\n")
+    } else {
+      stop("Argument 'type' is missing with no default. Please specify 'similarities' or 'dissimilarities'")
+    }
+  }
+
+  # Match type argument with abbreviations
+  type <- match.arg(type, c("similarities", "dissimilarities"))
+  is_similarity <- (type == "similarities")
+
+  # Check inputs
   if (!is.matrix(x)) {
     x <- as.matrix(x)
   }
@@ -44,11 +73,28 @@ bclassicalmds <- function(x, type = c("s", "d"), k = 2, add = FALSE,
 
   n <- nrow(x)
 
+  # Check for dim validity
+  if (dim >= n) {
+    stop("Number of dimensions 'dim' must be less than the number of objects")
+  }
+  if (dim < 1) {
+    stop("Number of dimensions 'dim' must be at least 1")
+  }
+
+  # Store original row names for labels
+  if (is.null(labels)) {
+    if (!is.null(rownames(x))) {
+      labels <- rownames(x)
+    } else {
+      labels <- as.character(1:n)
+    }
+  } else if (length(labels) != n) {
+    stop("Length of labels must match the number of rows/columns in x")
+  }
+
   # Convert similarity to dissimilarity if needed
-  if (type == "s") {
-    # Convert similarity to dissimilarity
-    # Common approach: d = sqrt(2(1-s)) for correlations
-    # or d = max(s) - s for general similarities
+  if (is_similarity) {
+    # Convert similarity to dissimilarity using max(s) - s
     max_sim <- max(x, na.rm = TRUE)
     d_matrix <- max_sim - x
     diag(d_matrix) <- 0
@@ -57,23 +103,21 @@ bclassicalmds <- function(x, type = c("s", "d"), k = 2, add = FALSE,
     diag(d_matrix) <- 0
   }
 
+  # Check for non-negative values
+  if (any(d_matrix < 0, na.rm = TRUE)) {
+    warning("Negative values detected in dissimilarity matrix. Setting to 0.")
+    d_matrix[d_matrix < 0] <- 0
+  }
+
   # Perform classical MDS using cmdscale
-  mds_result <- cmdscale(d_matrix, k = k, eig = TRUE, add = add)
+  mds_result <- cmdscale(d_matrix, k = dim, eig = TRUE, add = add)
 
   # Extract coordinates
   coords <- mds_result$points
 
   # Create dimension names
-  colnames(coords) <- paste0("Dim", 1:k)
-
-  # Add row labels
-  if (!is.null(labels)) {
-    rownames(coords) <- labels
-  } else if (!is.null(rownames(x))) {
-    rownames(coords) <- rownames(x)
-  } else {
-    rownames(coords) <- 1:n
-  }
+  colnames(coords) <- paste0("Dim", 1:dim)
+  rownames(coords) <- labels
 
   # Calculate goodness of fit
   eig <- mds_result$eig
@@ -83,9 +127,9 @@ bclassicalmds <- function(x, type = c("s", "d"), k = 2, add = FALSE,
     # Keep only positive eigenvalues for GOF calculation
     pos_eig <- eig[eig > 0]
 
-    if (length(pos_eig) >= k) {
-      gof1 <- sum(abs(eig[1:k])) / sum(abs(eig))
-      gof2 <- sum(pos_eig[1:k]^2) / sum(pos_eig^2)
+    if (length(pos_eig) >= dim) {
+      gof1 <- sum(abs(eig[1:dim])) / sum(abs(eig))
+      gof2 <- sum(pos_eig[1:dim]^2) / sum(pos_eig^2)
     } else {
       gof1 <- NA
       gof2 <- NA
@@ -96,7 +140,7 @@ bclassicalmds <- function(x, type = c("s", "d"), k = 2, add = FALSE,
   }
 
   # Calculate stress (Kruskal's stress formula)
-  # Reconstruct distances from k-dimensional solution
+  # Reconstruct distances from dim-dimensional solution
   fitted_dist <- as.matrix(dist(coords))
 
   # Calculate stress
@@ -110,7 +154,7 @@ bclassicalmds <- function(x, type = c("s", "d"), k = 2, add = FALSE,
   }
 
   # Create plot if requested
-  if (plot && k >= 2) {
+  if (plot && dim >= 2) {
     # Extract first two dimensions for plotting
     x_coord <- coords[, 1]
     y_coord <- coords[, 2]
@@ -134,11 +178,9 @@ bclassicalmds <- function(x, type = c("s", "d"), k = 2, add = FALSE,
          ylim = range(y_coord) * 1.1)
 
     # Add labels
-    if (!is.null(rownames(coords))) {
-      text(x_coord, y_coord,
-           labels = rownames(coords),
-           pos = 3, cex = 0.8)
-    }
+    text(x_coord, y_coord,
+         labels = labels,
+         pos = 3, cex = 0.8)
 
     # Add grid
     grid(col = "lightgray", lty = "dotted")
@@ -151,8 +193,9 @@ bclassicalmds <- function(x, type = c("s", "d"), k = 2, add = FALSE,
     eig = eig,
     GOF = c(GOF1 = gof1, GOF2 = gof2),
     stress = stress,
-    k = k,
+    dim = dim,
     n = n,
+    type = type,
     call = match.call()
   )
 
@@ -160,6 +203,7 @@ bclassicalmds <- function(x, type = c("s", "d"), k = 2, add = FALSE,
 
   return(result)
 }
+
 
 #' Print method for bmds objects
 #'
@@ -175,7 +219,8 @@ print.bmds <- function(x, ...) {
   cat("\nCall:\n")
   print(x$call)
   cat("\nNumber of objects:", x$n, "\n")
-  cat("Number of dimensions:", x$k, "\n")
+  cat("Number of dimensions:", x$dim, "\n")
+  cat("Input type:", x$type, "\n")
 
   if (!is.na(x$stress)) {
     cat("\nStress:", sprintf("%.4f", x$stress), "\n")

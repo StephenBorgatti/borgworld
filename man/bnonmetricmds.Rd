@@ -6,8 +6,8 @@
 \usage{
 bnonmetricmds(
   x,
-  type = "d",
-  k = 2,
+  type,
+  dim = 2,
   max_iter = 100,
   plot = TRUE,
   labels = NULL,
@@ -18,12 +18,12 @@ bnonmetricmds(
 \arguments{
 \item{x}{A square matrix of similarities or dissimilarities}
 
-\item{type}{Character string specifying whether the input is a similarity or
-dissimilarity matrix. Accepts any string starting with "s" or "d"
-(case-insensitive), so "s", "sim", "similarity" all work for similarity,
-and "d", "dis", "diss", "dissimilarity" all work for dissimilarity.}
+\item{type}{Character string specifying the input type. Must be one of
+"similarities", "dissimilarities", or any unambiguous abbreviation
+(e.g., "s", "sim", "d", "dis", "diss"). If missing, the user will be
+prompted to specify.}
 
-\item{k}{Number of dimensions for the MDS solution (default = 2)}
+\item{dim}{Number of dimensions for the MDS solution (default = 2)}
 
 \item{max_iter}{Maximum number of iterations (default = 100)}
 
@@ -42,8 +42,9 @@ An object of class "bnmds" containing:
 \item{stress}{Final stress value (Kruskal's stress formula 1)}
 \item{stress.type}{Type of stress measure used}
 \item{n_iter}{Number of iterations performed}
-\item{k}{Number of dimensions}
+\item{dim}{Number of dimensions}
 \item{n}{Number of objects}
+\item{type}{Input type used}
 \item{call}{The function call}
 }
 \description{
@@ -55,7 +56,7 @@ This function uses MASS::isoMDS to perform Kruskal's non-metric MDS.
 Non-metric MDS attempts to preserve the rank order of dissimilarities
 rather than the exact values, making it more flexible than classical MDS.
 
-When a similarity matrix is provided (type starts with "s"), it is converted
+When a similarity matrix is provided (type = "similarities"), it is converted
 to dissimilarity using: d = max(s) - s
 
 The stress value reported is Kruskal's stress formula 1, which ranges from 0
@@ -71,15 +72,15 @@ The stress value reported is Kruskal's stress formula 1, which ranges from 0
 \examples{
 # Using dissimilarity matrix
 dist_mat <- as.matrix(dist(USArrests))
-bnonmetricmds(dist_mat, type = "d", k = 2)
-bnonmetricmds(dist_mat, type = "dissimilarity", k = 2)  # Same as above
+bnonmetricmds(dist_mat, "d", dim = 2)
+bnonmetricmds(dist_mat, "dissimilarities", dim = 2)  # Same as above
 
 # Using similarity matrix (correlation)
 cor_mat <- cor(mtcars)
-bnonmetricmds(cor_mat, type = "s", k = 2)
-bnonmetricmds(cor_mat, type = "similarity", k = 3, plot = FALSE)
+bnonmetricmds(cor_mat, "s", dim = 2)
+bnonmetricmds(cor_mat, "similarities", dim = 3, plot = FALSE)
 
 # With custom labels
-bnonmetricmds(cor_mat, type = "sim", labels = colnames(cor_mat))
+bnonmetricmds(cor_mat, "sim", labels = colnames(cor_mat))
 
 }

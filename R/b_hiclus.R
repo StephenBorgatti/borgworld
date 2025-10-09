@@ -283,13 +283,10 @@ create_partition_table <- function(hclust_obj, n, labels) {
 print_ascii_dendrogram <- function(hclust_obj, labels) {
   n <- length(labels)
   heights <- round(hclust_obj$height, 1)
-
   # Calculate dendrogram layout
   order <- hclust_obj$order
-
   # Print header with labels
   cat("\n")
-
   # Print labels vertically (downwards)
   max_label_len <- max(nchar(labels))
   for (row in 1:max_label_len) {
@@ -305,48 +302,40 @@ print_ascii_dendrogram <- function(hclust_obj, labels) {
     }
     cat("\n")
   }
-
   # Print separator
   cat("------  ")
   for (i in 1:n) {
     cat("- ")
   }
   cat("\n")
-
   # Build cluster hierarchy
   clusters <- list()
   for (i in 1:n) {
     clusters[[i]] <- i
   }
-
   # Process each merge and display
   for (step in 1:(n-1)) {
     c1 <- hclust_obj$merge[step, 1]
     c2 <- hclust_obj$merge[step, 2]
-
     # Get items in merging clusters
     if (c1 < 0) {
       items1 <- -c1
     } else {
       items1 <- clusters[[n + c1]]
     }
-
     if (c2 < 0) {
       items2 <- -c2
     } else {
       items2 <- clusters[[n + c2]]
     }
-
     # Store new cluster
     clusters[[n + step]] <- c(items1, items2)
-
     # For display, use cutree to get the actual clustering at this merge level
     num_clusters <- n - step
     current_clustering <- cutree(hclust_obj, k = num_clusters)
-
-    # Create display line
-    line <- rep(".", n)
-
+    # Create display line with spaces between columns
+    # We need 2n-1 positions: n columns and n-1 spaces
+    line <- rep(".", 2*n - 1)
     # Mark each cluster that has more than one member
     for (clust_id in unique(current_clustering)) {
       members <- which(current_clustering == clust_id)
@@ -355,15 +344,19 @@ print_ascii_dendrogram <- function(hclust_obj, labels) {
         positions <- match(members, order)
         min_pos <- min(positions)
         max_pos <- max(positions)
-        line[min_pos:max_pos] <- "X"
+        # Convert to expanded positions (including spaces)
+        # Position i in original becomes position 2*i-1 in expanded
+        # Space after position i becomes position 2*i
+        expanded_min <- 2 * min_pos - 1
+        expanded_max <- 2 * max_pos - 1
+        # Mark all positions from min to max (including spaces)
+        line[expanded_min:expanded_max] <- "X"
       }
     }
-
     # Print the line
     cat(sprintf("%6.1f  ", heights[step]))
-    for (i in 1:n) {
+    for (i in 1:(2*n - 1)) {
       cat(line[i])
-      cat(" ")  # Single space between columns
     }
     cat("\n")
   }

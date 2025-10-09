@@ -4,11 +4,11 @@
 #' dissimilarity matrix and optionally produces a plot of the results.
 #'
 #' @param x A square matrix of similarities or dissimilarities
-#' @param type Character string specifying whether the input is a similarity or
-#'   dissimilarity matrix. Accepts any string starting with "s" or "d"
-#'   (case-insensitive), so "s", "sim", "similarity" all work for similarity,
-#'   and "d", "dis", "diss", "dissimilarity" all work for dissimilarity.
-#' @param k Number of dimensions for the MDS solution (default = 2)
+#' @param type Character string specifying the input type. Must be one of
+#'   "similarities", "dissimilarities", or any unambiguous abbreviation
+#'   (e.g., "s", "sim", "d", "dis", "diss"). If missing, the user will be
+#'   prompted to specify.
+#' @param dim Number of dimensions for the MDS solution (default = 2)
 #' @param max_iter Maximum number of iterations (default = 100)
 #' @param plot Logical, whether to produce a plot (default = TRUE)
 #' @param labels Optional character vector of labels for points
@@ -21,8 +21,9 @@
 #'   \item{stress}{Final stress value (Kruskal's stress formula 1)}
 #'   \item{stress.type}{Type of stress measure used}
 #'   \item{n_iter}{Number of iterations performed}
-#'   \item{k}{Number of dimensions}
+#'   \item{dim}{Number of dimensions}
 #'   \item{n}{Number of objects}
+#'   \item{type}{Input type used}
 #'   \item{call}{The function call}
 #'
 #' @details
@@ -30,7 +31,7 @@
 #' Non-metric MDS attempts to preserve the rank order of dissimilarities
 #' rather than the exact values, making it more flexible than classical MDS.
 #'
-#' When a similarity matrix is provided (type starts with "s"), it is converted
+#' When a similarity matrix is provided (type = "similarities"), it is converted
 #' to dissimilarity using: d = max(s) - s
 #'
 #' The stress value reported is Kruskal's stress formula 1, which ranges from 0
@@ -51,29 +52,45 @@
 #' @examples
 #' # Using dissimilarity matrix
 #' dist_mat <- as.matrix(dist(USArrests))
-#' bnonmetricmds(dist_mat, type = "d", k = 2)
-#' bnonmetricmds(dist_mat, type = "dissimilarity", k = 2)  # Same as above
+#' bnonmetricmds(dist_mat, "d", dim = 2)
+#' bnonmetricmds(dist_mat, "dissimilarities", dim = 2)  # Same as above
 #'
 #' # Using similarity matrix (correlation)
 #' cor_mat <- cor(mtcars)
-#' bnonmetricmds(cor_mat, type = "s", k = 2)
-#' bnonmetricmds(cor_mat, type = "similarity", k = 3, plot = FALSE)
+#' bnonmetricmds(cor_mat, "s", dim = 2)
+#' bnonmetricmds(cor_mat, "similarities", dim = 3, plot = FALSE)
 #'
 #' # With custom labels
-#' bnonmetricmds(cor_mat, type = "sim", labels = colnames(cor_mat))
+#' bnonmetricmds(cor_mat, "sim", labels = colnames(cor_mat))
 #'
-bnonmetricmds <- function(x, type = "d", k = 2, max_iter = 100,
+bnonmetricmds <- function(x, type, dim = 2, max_iter = 100,
                           plot = TRUE, labels = NULL, trace = FALSE, ...) {
 
-  # Parse type argument - accepts any string starting with 's' or 'd'
-  type <- tolower(type)
-  if (substr(type, 1, 1) == "s") {
-    is_similarity <- TRUE
-  } else if (substr(type, 1, 1) == "d") {
-    is_similarity <- FALSE
-  } else {
-    stop("type must be 'similarity' or 'dissimilarity' (or any string starting with 's' or 'd')")
+  # Check if type is provided, if not, prompt user
+  if (missing(type)) {
+    if (interactive()) {
+      cat("Please specify the type of your input matrix:\n")
+      cat("  1. similarities\n")
+      cat("  2. dissimilarities\n")
+      response <- readline("Enter your choice (1 or 2, or 's'/'d'): ")
+
+      response <- tolower(trimws(response))
+      if (response %in% c("1", "s", "sim", "similarities")) {
+        type <- "similarities"
+      } else if (response %in% c("2", "d", "dis", "diss", "dissimilarities")) {
+        type <- "dissimilarities"
+      } else {
+        stop("Invalid choice. Please specify 'similarities' or 'dissimilarities'")
+      }
+      cat("Using type:", type, "\n")
+    } else {
+      stop("Argument 'type' is missing with no default. Please specify 'similarities' or 'dissimilarities'")
+    }
   }
+
+  # Match type argument with abbreviations
+  type <- match.arg(type, c("similarities", "dissimilarities"))
+  is_similarity <- (type == "similarities")
 
   # Check inputs
   if (!is.matrix(x)) {
@@ -86,12 +103,12 @@ bnonmetricmds <- function(x, type = "d", k = 2, max_iter = 100,
 
   n <- nrow(x)
 
-  # Check for k validity
-  if (k >= n) {
-    stop("Number of dimensions k must be less than the number of objects")
+  # Check for dim validity
+  if (dim >= n) {
+    stop("Number of dimensions 'dim' must be less than the number of objects")
   }
-  if (k < 1) {
-    stop("Number of dimensions k must be at least 1")
+  if (dim < 1) {
+    stop("Number of dimensions 'dim' must be at least 1")
   }
 
   # Store original row names for labels
@@ -128,7 +145,7 @@ bnonmetricmds <- function(x, type = "d", k = 2, max_iter = 100,
 
   # Get initial configuration using classical MDS
   # This provides a good starting point for isoMDS
-  init_config <- cmdscale(d_dist, k = k)
+  init_config <- cmdscale(d_dist, k = dim)
 
   # Convert trace parameter to numeric if needed
   if (is.logical(trace)) {
@@ -140,7 +157,7 @@ bnonmetricmds <- function(x, type = "d", k = 2, max_iter = 100,
   # Perform non-metric MDS using MASS::isoMDS
   nmds_result <- MASS::isoMDS(d_dist,
                               y = init_config,
-                              k = k,
+                              k = dim,
                               maxit = max_iter,
                               trace = trace_val > 0,
                               tol = 1e-3,
@@ -150,11 +167,11 @@ bnonmetricmds <- function(x, type = "d", k = 2, max_iter = 100,
   coords <- nmds_result$points
 
   # Create dimension names
-  colnames(coords) <- paste0("Dim", 1:k)
+  colnames(coords) <- paste0("Dim", 1:dim)
   rownames(coords) <- labels
 
   # Create plot if requested
-  if (plot && k >= 2) {
+  if (plot && dim >= 2) {
     # Extract first two dimensions for plotting
     x_coord <- coords[, 1]
     y_coord <- coords[, 2]
@@ -202,8 +219,9 @@ bnonmetricmds <- function(x, type = "d", k = 2, max_iter = 100,
     stress = nmds_result$stress / 100,  # Convert to 0-1 scale
     stress.type = "Kruskal's Stress Formula 1",
     n_iter = nmds_result$n_iter,
-    k = k,
+    dim = dim,
     n = n,
+    type = type,
     call = match.call()
   )
 
@@ -211,6 +229,7 @@ bnonmetricmds <- function(x, type = "d", k = 2, max_iter = 100,
 
   return(result)
 }
+
 
 #' Print method for bnmds objects
 #'
@@ -226,7 +245,8 @@ print.bnmds <- function(x, ...) {
   cat("\nCall:\n")
   print(x$call)
   cat("\nNumber of objects:", x$n, "\n")
-  cat("Number of dimensions:", x$k, "\n")
+  cat("Number of dimensions:", x$dim, "\n")
+  cat("Input type:", x$type, "\n")
 
   cat("\nStress:", sprintf("%.4f", x$stress), "\n")
   cat("Stress type:", x$stress.type, "\n")
@@ -259,6 +279,7 @@ print.bnmds <- function(x, ...) {
 
   invisible(x)
 }
+
 
 #' Shepard plot for bnmds objects
 #'

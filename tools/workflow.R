@@ -15,6 +15,8 @@ devtools::check()     # Ctrl+Shift+E
 # 6. If releasing/milestone, update version in DESCRIPTION
 usethis::use_version("minor")  # or "minor", "major", "dev"
 usethis::use_version("patch")  # or "minor", "major", "dev"
+usethis::use_version("patch", push = TRUE)
+
 
 # 7. Commit and push via Git tab
 
@@ -24,3 +26,18 @@ devtools::install()   # Install the package
 # Restart R (Session > Restart R in RStudio)
 library(borgworld)    # Test as users would use it
 help(package = "borgworld")  # Check documentation
+
+
+#when rdb is corrupt
+
+# Clean the package completely
+devtools::clean_dll()  # Remove compiled code
+devtools::unload()     # Unload if loaded
+
+# Delete the corrupt files manually
+unlink("C:/Users/sborg2/AppData/Local/R/win-library/4.5/borgworld", recursive = TRUE)
+
+# Rebuild
+devtools::document()   # Regenerate documentation
+devtools::install()    # Reinstall the package
+devtools::load_all()   # Load it again
