@@ -10,7 +10,7 @@ bfactor(
   mineigen = 1,
   rotate = "varimax",
   fm = "pa",
-  cut = 0.5,
+  cut = 0.4,
   n.obs = NULL,
   ...
 )

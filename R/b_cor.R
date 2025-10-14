@@ -92,10 +92,13 @@ bcor <- function(x, y = NULL, dim = "columns", use = "pairwise.complete.obs", ..
       rownames(result) <- original_names
       colnames(result) <- original_names
     }
+    #result <- round(result,3)
 
     return(result)
   }
 
   # Standard correlation (between columns)
-  stats::cor(x = x, y = y, use = use, ...)
+  result <- stats::cor(x = x, y = y, use = use, ...)
+  #result <- round(result,3)
+  return(result)
 }

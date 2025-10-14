@@ -100,10 +100,10 @@ bcorresp <- function(data,
     }
     # Keep as matrix, no filtering needed
   } else if (is.data.frame(data)) {
-    # For data frames, filter to numeric columns only
+    # For data frames, filter to numeric columns only using base R
     original_vars <- names(data)
-    numeric_data <- data |>
-      dplyr::select(where(is.numeric))
+    numeric_cols <- sapply(data, is.numeric)
+    numeric_data <- data[, numeric_cols, drop = FALSE]
 
     dropped_vars <- setdiff(original_vars, names(numeric_data))
 
@@ -241,24 +241,40 @@ bcorresp <- function(data,
   rownames(col_contrib) <- colnames(data)
   colnames(col_contrib) <- paste0("Dim", 1:n_dim)
 
-  # STEP 9: Calculate quality of representation (cos2)
+  # STEP 9: Calculate quality of representation (cos2) - FIXED VERSION
   # Row cos2
-  row_dist2 <- rowSums((P / row_masses - rep(col_masses, each = n_rows))^2 *
-                         matrix(rep(1/col_masses, n_rows), n_rows, byrow = TRUE))
-  row_cos2 <- row_coords^2 / row_dist2
+  row_profiles <- sweep(P, 1, row_masses, "/")  # Divide each row by its mass
+  row_centers <- matrix(col_masses, nrow=n_rows, ncol=n_cols, byrow=TRUE)
+  row_diff <- row_profiles - row_centers
+  row_dist2 <- rowSums(sweep(row_diff^2, 2, col_masses, "/"))
+
+  # Initialize row_cos2 matrix
+  row_cos2 <- matrix(0, n_rows, n_dim)
+  for(i in 1:n_dim) {
+    row_cos2[, i] <- row_coords[, i]^2 / row_dist2
+  }
   row_cos2[is.nan(row_cos2)] <- 0
+  rownames(row_cos2) <- rownames(data)
+  colnames(row_cos2) <- paste0("Dim", 1:n_dim)
 
   # Column cos2
-  col_dist2 <- colSums((t(P) / col_masses - rep(row_masses, each = n_cols))^2 *
-                         matrix(rep(1/row_masses, n_cols), n_cols, byrow = TRUE))
-  col_cos2 <- col_coords^2 / col_dist2
+  col_profiles <- sweep(t(P), 1, col_masses, "/")  # Column profiles
+  col_centers <- matrix(row_masses, nrow=n_cols, ncol=n_rows, byrow=TRUE)
+  col_diff <- col_profiles - col_centers
+  col_dist2 <- rowSums(sweep(col_diff^2, 2, row_masses, "/"))
+
+  # Initialize col_cos2 matrix
+  col_cos2 <- matrix(0, n_cols, n_dim)
+  for(i in 1:n_dim) {
+    col_cos2[, i] <- col_coords[, i]^2 / col_dist2
+  }
   col_cos2[is.nan(col_cos2)] <- 0
+  rownames(col_cos2) <- colnames(data)
+  colnames(col_cos2) <- paste0("Dim", 1:n_dim)
 
   # Calculate row and column inertias
-  row_inertias <- row_masses * rowSums((P / row_masses - rep(col_masses, each = n_rows))^2 *
-                                         matrix(rep(1/col_masses, n_rows), n_rows, byrow = TRUE))
-  col_inertias <- col_masses * colSums((t(P) / col_masses - rep(row_masses, each = n_cols))^2 *
-                                         matrix(rep(1/row_masses, n_cols), n_cols, byrow = TRUE))
+  row_inertias <- row_masses * row_dist2
+  col_inertias <- col_masses * col_dist2
 
   # Chi-square test
   chi2_stat <- N * total_inertia

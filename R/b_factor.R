@@ -42,7 +42,7 @@
 #'
 #' @export
 bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
-                    fm = "pa", cut = 0.5, n.obs = NULL, ...) {
+                    fm = "pa", cut = 0.4, n.obs = NULL, ...) {
   # Load required package
   if (!require("psych", quietly = TRUE)) {
     stop("Package 'psych' is required. Please install it.")
