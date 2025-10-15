@@ -12,6 +12,7 @@
 #' @param add Logical, whether to add a constant to make eigenvalues non-negative (default = FALSE)
 #' @param plot Logical, whether to produce a plot (default = TRUE)
 #' @param labels Optional character vector of labels for points
+#' @param jitter Numeric, proportion of the range to jitter plotted points by (default = 0, no jitter)
 #'
 #' @return An object of class "bmds" containing:
 #'   \item{points}{Matrix of MDS coordinates}
@@ -33,8 +34,11 @@
 #' bclassicalmds(cor_mat, "s", dim=2)
 #' bclassicalmds(cor_mat, "similarities", dim=3, plot=FALSE)
 #'
+#' # With jitter to reduce overplotting
+#' bclassicalmds(cor_mat, "s", dim=2, jitter=0.02)
+#'
 bclassicalmds <- function(x, type, dim = 2, add = FALSE,
-                          plot = TRUE, labels = NULL) {
+                          plot = TRUE, labels = NULL, jitter = 0) {
 
   # Check if type is provided, if not, prompt user
   if (missing(type)) {
@@ -158,6 +162,17 @@ bclassicalmds <- function(x, type, dim = 2, add = FALSE,
     # Extract first two dimensions for plotting
     x_coord <- coords[, 1]
     y_coord <- coords[, 2]
+
+    # Apply jitter if requested
+    if (jitter > 0) {
+      # Calculate jitter amount as proportion of the range for each dimension
+      jitter_amount_x <- diff(range(x_coord)) * jitter
+      jitter_amount_y <- diff(range(y_coord)) * jitter
+
+      # Add jitter using base R jitter function
+      x_coord <- jitter(x_coord, amount = jitter_amount_x)
+      y_coord <- jitter(y_coord, amount = jitter_amount_y)
+    }
 
     # Calculate axis labels with variance explained
     if (!is.na(gof2) && length(pos_eig) >= 2) {

@@ -4,7 +4,15 @@
 \alias{bclassicalmds}
 \title{Classical Multidimensional Scaling with Similarity/Dissimilarity Input}
 \usage{
-bclassicalmds(x, type, dim = 2, add = FALSE, plot = TRUE, labels = NULL)
+bclassicalmds(
+  x,
+  type,
+  dim = 2,
+  add = FALSE,
+  plot = TRUE,
+  labels = NULL,
+  jitter = 0
+)
 }
 \arguments{
 \item{x}{A square matrix of similarities or dissimilarities}
@@ -21,6 +29,8 @@ prompted to specify.}
 \item{plot}{Logical, whether to produce a plot (default = TRUE)}
 
 \item{labels}{Optional character vector of labels for points}
+
+\item{jitter}{Numeric, proportion of the range to jitter plotted points by (default = 0, no jitter)}
 }
 \value{
 An object of class "bmds" containing:
@@ -42,5 +52,8 @@ bclassicalmds(as.matrix(dist(USArrests)), "dissimilarities", dim=2)
 cor_mat <- cor(mtcars)
 bclassicalmds(cor_mat, "s", dim=2)
 bclassicalmds(cor_mat, "similarities", dim=3, plot=FALSE)
+
+# With jitter to reduce overplotting
+bclassicalmds(cor_mat, "s", dim=2, jitter=0.02)
 
 }

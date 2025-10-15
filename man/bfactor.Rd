@@ -45,7 +45,7 @@ Invisibly returns the psych::fa object for further analysis
 \description{
 Performs factor analysis with Stata-style output formatting. Displays complete
 eigenvalue table and formatted factor loadings with optional suppression of
-small values in rotated solutions.
+small values in rotated solutions. Includes reliability measures for each factor.
 }
 \examples{
 \dontrun{
@@ -63,6 +63,10 @@ result <- bfactor(mydata, nfactors = 5, rotate = "promax", cut = 0.25)
 
 # Maximum likelihood estimation
 result <- bfactor(mydata, nfactors = 3, fm = "ml")
+
+# Get reliability measures separately
+fa_result <- bfactor(mydata, nfactors = 3)
+reliability <- breliability(fa_result, mydata, cut = 0.4)
 }
 
 }

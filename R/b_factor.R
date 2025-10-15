@@ -1,8 +1,118 @@
+#' Calculate Factor Reliability Measures
+#'
+#' Computes reliability measures (alpha, omega, GLB) for factors from a factor
+#' analysis solution. Can be called independently or is automatically called by
+#' bfactor().
+#'
+#' @param fa_result A psych::fa object from factor analysis
+#' @param data The original data frame used in the factor analysis
+#' @param cut Threshold for determining which items load on each factor.
+#'   Default is 0.4.
+#' @param use_rotated Logical. Use rotated loadings if TRUE (default),
+#'   unrotated if FALSE.
+#'
+#' @return A data frame with reliability measures for each factor
+#'
+#' @export
+breliability <- function(fa_result, data, cut = 0.4, use_rotated = TRUE) {
+  if (!require("psych", quietly = TRUE)) {
+    stop("Package 'psych' is required. Please install it.")
+  }
+
+  # Determine which loadings to use
+  loadings_mat <- if (use_rotated && !is.null(fa_result$loadings)) {
+    as.matrix(fa_result$loadings)
+  } else {
+    as.matrix(fa_result$loadings)
+  }
+
+  n_factors <- ncol(loadings_mat)
+
+  # Initialize results data frame with correct structure
+  reliability_df <- data.frame(
+    factor = integer(n_factors),
+    n_items = integer(n_factors),
+    items = character(n_factors),
+    alpha = numeric(n_factors),
+    std_alpha = numeric(n_factors),
+    omega_t = numeric(n_factors),
+    stringsAsFactors = FALSE
+  )
+
+  # Fill in NAs
+  reliability_df$alpha <- NA_real_
+  reliability_df$std_alpha <- NA_real_
+  reliability_df$omega_t <- NA_real_
+
+  for (i in 1:n_factors) {
+    loadings_vec <- loadings_mat[, i]
+    # Use absolute values to identify items that load on this factor
+    high_loaders <- which(abs(loadings_vec) >= cut)
+
+    reliability_df$factor[i] <- i
+    reliability_df$n_items[i] <- length(high_loaders)
+    reliability_df$items[i] <- if (length(high_loaders) > 0) {
+      paste(names(loadings_vec)[high_loaders], collapse = ", ")
+    } else {
+      ""
+    }
+
+    if (length(high_loaders) >= 2) {
+      factor_data <- data[, high_loaders, drop = FALSE]
+
+      # Identify which items need to be reversed (negative loadings)
+      items_to_reverse <- loadings_vec[high_loaders] < 0
+
+      # Create reversed data for omega
+      factor_data_reversed <- factor_data
+      if (any(items_to_reverse)) {
+        for (j in which(items_to_reverse)) {
+          # Reverse by subtracting from max + min
+          factor_data_reversed[, j] <- max(factor_data[, j], na.rm = TRUE) +
+            min(factor_data[, j], na.rm = TRUE) -
+            factor_data[, j]
+        }
+      }
+
+      # Calculate alpha with check.keys = TRUE (it handles reversal automatically)
+      alpha_result <- tryCatch({
+        suppressMessages(suppressWarnings(
+          psych::alpha(factor_data, check.keys = TRUE)
+        ))
+      }, error = function(e) NULL)
+
+      if (!is.null(alpha_result)) {
+        reliability_df$alpha[i] <- alpha_result$total$raw_alpha
+        reliability_df$std_alpha[i] <- alpha_result$total$std.alpha
+      }
+
+      # Calculate omega (if 3+ items) using reversed data
+      if (length(high_loaders) >= 3) {
+        omega_result <- tryCatch({
+          suppressMessages(suppressWarnings({
+            capture.output({
+              omega_out <- psych::omega(factor_data_reversed, nfactors = 1, plot = FALSE)
+            })
+            omega_out
+          }))
+        }, error = function(e) NULL)
+
+        if (!is.null(omega_result)) {
+          reliability_df$omega_t[i] <- omega_result$omega.tot
+        }
+      }
+    }
+  }
+
+  return(reliability_df)
+}
+
+
 #' Stata-style Factor Analysis
 #'
 #' Performs factor analysis with Stata-style output formatting. Displays complete
 #' eigenvalue table and formatted factor loadings with optional suppression of
-#' small values in rotated solutions.
+#' small values in rotated solutions. Includes reliability measures for each factor.
 #'
 #' @param data A data frame or matrix of observed variables
 #' @param nfactors Maximum number of factors to retain for display. If NULL,
@@ -38,6 +148,10 @@
 #'
 #' # Maximum likelihood estimation
 #' result <- bfactor(mydata, nfactors = 3, fm = "ml")
+#'
+#' # Get reliability measures separately
+#' fa_result <- bfactor(mydata, nfactors = 3)
+#' reliability <- breliability(fa_result, mydata, cut = 0.4)
 #' }
 #'
 #' @export
@@ -126,6 +240,15 @@ bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
   cat(sprintf("%50s = %10d\n", "Number of obs", n.obs))
   cat(sprintf("%50s = %10d\n", "Retained factors", retained_factors))
   cat(sprintf("%50s = %10d\n", "Number of params", n_params))
+
+  # Print correlation matrix
+  cat("\n")
+  cat(strrep("=", 79))
+  cat("\n")
+  cat("Correlation Matrix:\n")
+  cat(strrep("=", 79))
+  cat("\n\n")
+  print(round(cor_mat, 3))
 
   # Print eigenvalue table for ALL eigenvalues from correlation matrix
   cat("\n")
@@ -226,6 +349,49 @@ bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
     cat(strrep("-", 70))
     cat("\n")
   }
+
+  # Calculate and print reliability measures
+  cat("\n")
+  cat(strrep("=", 79))
+  cat("\n")
+  cat("Factor Reliability Measures\n")
+  cat(strrep("=", 79))
+  cat("\n")
+
+  reliability_df <- breliability(fa_result, data, cut = cut,
+                                 use_rotated = (rotate != "none"))
+
+  # Print formatted table header
+  cat(sprintf("\n    %-8s %8s %10s %12s %10s\n",
+              "Factor", "N Items", "Alpha", "Std Alpha", "Omega"))
+  cat(strrep("-", 79))
+  cat("\n")
+
+  # Print each row
+  for (i in 1:nrow(reliability_df)) {
+    cat(sprintf("    %-8d %8d %10s %12s %10s\n",
+                reliability_df$factor[i],
+                reliability_df$n_items[i],
+                if (is.na(reliability_df$alpha[i])) "-" else sprintf("%.4f", reliability_df$alpha[i]),
+                if (is.na(reliability_df$std_alpha[i])) "-" else sprintf("%.4f", reliability_df$std_alpha[i]),
+                if (is.na(reliability_df$omega_t[i])) "-" else sprintf("%.4f", reliability_df$omega_t[i])))
+  }
+  cat(strrep("-", 79))
+  cat("\n")
+
+  # Print items for each factor
+  cat("\nItems by Factor:\n")
+  for (i in 1:nrow(reliability_df)) {
+    if (reliability_df$items[i] != "") {
+      cat(sprintf("  Factor %d: %s\n", reliability_df$factor[i], reliability_df$items[i]))
+    } else {
+      cat(sprintf("  Factor %d: No items above cutoff\n", reliability_df$factor[i]))
+    }
+  }
+
+  cat("\n")
+  cat(strrep("=", 79))
+  cat("\n")
 
   # Return the fa object invisibly
   invisible(fa_result)
