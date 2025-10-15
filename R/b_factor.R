@@ -281,48 +281,58 @@ bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
                 fa_result$dof, fa_result$STATISTIC, fa_result$PVAL))
   }
 
+  # Calculate maximum variable name length for proper column alignment
+  var_names <- rownames(fa_result$loadings)
+  max_var_length <- max(nchar(var_names), nchar("Variable"))
+
   # Print unrotated factor loadings (retained factors only)
   cat("\nFactor loadings (pattern matrix) and unique variances\n\n")
-  cat(strrep("-", 70))
+
+  # Adjust line width based on variable name length
+  line_width <- max(70, 4 + max_var_length + retained_factors * 10 + 13)
+  cat(strrep("-", line_width))
   cat("\n")
 
-  loading_header <- sprintf("    %-12s", "Variable")
+  loading_header <- sprintf(paste0("    %-", max_var_length, "s"), "Variable")
   for (i in 1:retained_factors) {
     loading_header <- paste0(loading_header, sprintf(" %9s", paste0("Factor", i)))
   }
   loading_header <- paste0(loading_header, sprintf(" %12s", "Uniqueness"))
   cat(loading_header, "\n")
-  cat(strrep("-", 70))
+  cat(strrep("-", line_width))
   cat("\n")
 
   loadings_mat <- fa_result$loadings[1:n_vars, 1:retained_factors, drop = FALSE]
   uniqueness <- fa_result$uniquenesses
 
   for (i in 1:n_vars) {
-    row_str <- sprintf("    %-12s", rownames(loadings_mat)[i])
+    row_str <- sprintf(paste0("    %-", max_var_length, "s"), rownames(loadings_mat)[i])
     for (j in 1:retained_factors) {
       row_str <- paste0(row_str, sprintf(" %9.4f", loadings_mat[i, j]))
     }
     row_str <- paste0(row_str, sprintf(" %12.4f", uniqueness[i]))
     cat(row_str, "\n")
   }
-  cat(strrep("-", 70))
+  cat(strrep("-", line_width))
   cat("\n")
 
   # Print rotated factor loadings (sorted and with cutoff) - retained factors only
   # No uniqueness column for rotated loadings
   if (rotate != "none") {
-    cat("\nRotated factor loadings (pattern matrix) and unique variances\n\n")
-    cat(strrep("-", 70))
+    cat("\nRotated factor loadings (pattern matrix)\n\n")
+
+    # Adjust line width for rotated section (no uniqueness column)
+    line_width_rot <- max(70, 4 + max_var_length + retained_factors * 10)
+    cat(strrep("-", line_width_rot))
     cat("\n")
 
     # Header without uniqueness column
-    loading_header_rot <- sprintf("    %-12s", "Variable")
+    loading_header_rot <- sprintf(paste0("    %-", max_var_length, "s"), "Variable")
     for (i in 1:retained_factors) {
       loading_header_rot <- paste0(loading_header_rot, sprintf(" %9s", paste0("Factor", i)))
     }
     cat(loading_header_rot, "\n")
-    cat(strrep("-", 70))
+    cat(strrep("-", line_width_rot))
     cat("\n")
 
     # Sort variables by their maximum absolute loading
@@ -335,7 +345,7 @@ bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
     loadings_sorted <- loadings_rot[sort_order, , drop = FALSE]
 
     for (i in 1:n_vars) {
-      row_str <- sprintf("    %-12s", rownames(loadings_sorted)[i])
+      row_str <- sprintf(paste0("    %-", max_var_length, "s"), rownames(loadings_sorted)[i])
       for (j in 1:retained_factors) {
         val <- loadings_sorted[i, j]
         if (abs(val) < cut) {
@@ -346,7 +356,7 @@ bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
       }
       cat(row_str, "\n")
     }
-    cat(strrep("-", 70))
+    cat(strrep("-", line_width_rot))
     cat("\n")
   }
 
