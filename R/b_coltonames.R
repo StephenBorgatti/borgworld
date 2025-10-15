@@ -84,8 +84,6 @@ bcoltonames <- function(df, col = NULL, remove = TRUE) {
     }
 
     if (is.null(suitable_col)) {
-      message("No suitable column found for row names conversion.")
-      message("Criteria: column should have empty name OR non-numeric values, with no duplicates or NAs.")
       return(df)
     }
 
