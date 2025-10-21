@@ -1,5 +1,3 @@
-# bregress
-
 #' Stata-style regression output for linear models
 #'
 #' Produces regression output that mimics Stata's regress command format
@@ -212,6 +210,95 @@ bregress <- function(formula, data, robust = FALSE) {
         "\n", sep = "")
   }
   cat(separator_line, "\n")
+
+  # Calculate VIF and Tolerance for predictors (exclude intercept)
+  if (k > 0) {  # Only if there are predictors
+    # Get the model matrix without intercept
+    X <- model.matrix(model)[, -1, drop = FALSE]
+
+    # Calculate VIF for each predictor
+    vif_values <- numeric(k)
+    tolerance_values <- numeric(k)
+    predictor_names <- names(coef(model))[-1]  # Exclude intercept
+
+    for (j in 1:k) {
+      # Regress each predictor on all other predictors
+      if (k > 1) {
+        X_j <- X[, j]
+        X_others <- X[, -j, drop = FALSE]
+        r_squared_j <- summary(lm(X_j ~ X_others))$r.squared
+        vif_values[j] <- 1 / (1 - r_squared_j)
+        tolerance_values[j] <- 1 - r_squared_j
+      } else {
+        # If only one predictor, VIF = 1
+        vif_values[j] <- 1
+        tolerance_values[j] <- 1
+      }
+    }
+
+    # Print VIF/Tolerance table
+    cat("\n")
+
+    # Create VIF table header with R-squared, Tolerance, VIF, and Sqrt(VIF)
+    vif_header <- sprintf("%*s |    R-squared   Tolerance         VIF   Sqrt(VIF)",
+                          var_col_width, "Variable")
+    vif_table_width <- nchar(vif_header)
+    vif_separator <- paste0(rep("-", vif_table_width), collapse = "")
+
+    cat(vif_separator, "\n")
+    cat(vif_header, "\n")
+    cat(paste0(paste0(rep("-", var_col_width), collapse = ""),
+               "+",
+               paste0(rep("-", vif_table_width - var_col_width - 1), collapse = "")), "\n")
+
+    # Calculate R-squared values for display
+    r_squared_values <- numeric(k)
+    for (j in 1:k) {
+      if (k > 1) {
+        r_squared_values[j] <- 1 - tolerance_values[j]
+      } else {
+        r_squared_values[j] <- 0
+      }
+    }
+
+    # Print VIF values for each predictor
+    for (j in 1:k) {
+      var_name <- predictor_names[j]
+      if (nchar(var_name) > var_col_width) {
+        var_name <- substr(var_name, 1, var_col_width)
+      }
+
+      # Format all values
+      rsq_str <- sprintf("%10.4f", r_squared_values[j])
+      tol_str <- sprintf("%10.4f", tolerance_values[j])
+      vif_str <- sprintf("%10.2f", vif_values[j])
+      sqrt_vif_str <- sprintf("%10.4f", sqrt(vif_values[j]))
+
+      cat(sprintf("%*s", var_col_width, var_name), " | ",
+          rsq_str, "  ",
+          tol_str, "  ",
+          vif_str, "  ",
+          sqrt_vif_str,
+          "\n", sep = "")
+    }
+
+    # Add mean VIF at the bottom
+    mean_vif <- mean(vif_values)
+    mean_rsq <- mean(r_squared_values)
+    mean_tol <- mean(tolerance_values)
+    mean_sqrt_vif <- sqrt(mean_vif)
+
+    cat(paste0(paste0(rep("-", var_col_width), collapse = ""),
+               "+",
+               paste0(rep("-", vif_table_width - var_col_width - 1), collapse = "")), "\n")
+    cat(sprintf("%*s", var_col_width, "Mean"), " | ",
+        sprintf("%10.4f", mean_rsq), "  ",
+        sprintf("%10.4f", mean_tol), "  ",
+        sprintf("%10.2f", mean_vif), "  ",
+        sprintf("%10.4f", mean_sqrt_vif),
+        "\n", sep = "")
+    cat(vif_separator, "\n")
+  }
 
   # Return the model invisibly
   invisible(model)
