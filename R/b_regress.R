@@ -22,6 +22,11 @@
 #' bregress(mpg ~ wt + hp, data = mtcars, robust = TRUE)
 #' }
 bregress <- function(formula, data, robust = FALSE) {
+  # Convert string to formula if needed
+  if (is.character(formula)) {
+    formula <- as.formula(formula)
+  }
+
   # Fit the model
   model <- lm(formula, data = data)
 
@@ -97,7 +102,7 @@ bregress <- function(formula, data, robust = FALSE) {
   header <- sprintf("%*s | %*s %*s %*s   Number of obs   = %9d",
                     w_src, "Source", w_ss, "SS", w_df, "df", w_ms, "MS", n)
   cat("\n", header, "\n", sep = "")
-  cat(paste0(rep("-", nchar(header)), collapse = ""), " \n", sep = "")
+  cat(paste0(rep("-", nchar(header)), collapse = ""), "\n", sep = "")
 
   row_fmt <- function(src, ss, df, ms, tail = "") {
     ss_s <- formatC(ss, digits = 7, format = "g")
@@ -116,34 +121,71 @@ bregress <- function(formula, data, robust = FALSE) {
   cat(row_fmt("Residual", ss_resid,  df_resid, ms_resid,
               sprintf("   R-squared       = %10.4f", r_squared)), "\n")
 
-  sep <- sprintf("%*s+%s", w_src, "",
-                 paste0(rep("-", w_ss + 1 + w_df + 1 + w_ms + 2), collapse = ""))
+  # Fixed separator line - align "+" with "|" symbols
+  sep <- sprintf("%*s+%s", w_src + 1, "",
+                 paste0(rep("-", w_ss + 1 + w_df + 1 + w_ms + 1), collapse = ""))
   cat(sep, sprintf("   Adj R-squared   = %10.4f", adj_r_squared), "\n", sep = "")
 
   cat(row_fmt("Total",    ss_total,  df_total, ss_total/df_total,
-              sprintf("   Root MSE        = %10.3f", root_mse)), "\n")
+              sprintf("   Root MSE        = %9.3f", root_mse)), "\n")
 
   # Print coefficient table
   cat("\n")
-  cat("------------------------------------------------------------------------------\n")
 
-  # Determine dependent variable name and truncate if needed
+  # Determine dependent variable name
   dep_var <- as.character(formula[[2]])
-  if (nchar(dep_var) > 12) {
-    dep_var <- substr(dep_var, 1, 12)
+
+  # Find the longest variable name to determine column width
+  all_var_names <- coef_names
+  max_var_length <- max(nchar(all_var_names), nchar(dep_var))
+  # Use at least 20 characters for the first column, matching Stata
+  var_col_width <- max(20, max_var_length)
+
+  # Header for coefficient table with properly aligned columns
+  header_line <- sprintf("%*s | Coefficient  Std. err.      t    P>|t|     [95%% conf. interval]",
+                         var_col_width, dep_var)
+
+  # Calculate the exact width based on the header line
+  total_width <- nchar(header_line)
+
+  # Create separator lines that match the header width exactly
+  separator_line <- paste0(rep("-", total_width), collapse = "")
+  cat(separator_line, "\n")
+  cat(header_line, "\n", sep = "")
+
+  # Separator line between header and data
+  sep_line <- paste0(paste0(rep("-", var_col_width), collapse = ""),
+                     "+",
+                     paste0(rep("-", total_width - var_col_width - 1), collapse = ""))
+  cat(sep_line, "\n")
+
+  # Helper function to format numbers that might need scientific notation
+  format_coef <- function(x, width = 11) {
+    # For very small or very large numbers, use compact scientific notation
+    if (abs(x) < 1e-4 || abs(x) > 1e6) {
+      # Use only 2 decimal places in scientific notation to save space
+      if (abs(x) < 1e-10 || abs(x) > 1e10) {
+        formatted <- sprintf("%.1e", x)
+      } else {
+        formatted <- sprintf("%.2e", x)
+      }
+    } else {
+      # For normal-sized numbers, use fixed decimal places
+      if (abs(x) >= 10) {
+        formatted <- sprintf("%.5f", x)
+      } else if (abs(x) >= 1) {
+        formatted <- sprintf("%.6f", x)
+      } else {
+        formatted <- sprintf("%.7f", x)
+      }
+    }
+    # Right-align in the field
+    sprintf("%*s", width, formatted)
   }
 
-  # Header for coefficient table - note the exact spacing
-  cat(sprintf("%12s", dep_var), " | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]\n", sep = "")
-  cat("-------------+----------------------------------------------------------------\n")
-
-  # Print each coefficient row with exact spacing to match Stata
+  # Print each coefficient row with better spacing
   for (i in 1:length(coef_names)) {
-    # Truncate variable name if too long
     var_name <- coef_names[i]
-    if (nchar(var_name) > 12) {
-      var_name <- substr(var_name, 1, 12)
-    }
 
     coef_val <- coef_summary[i, 1]
     se_val <- coef_summary[i, 2]
@@ -154,22 +196,22 @@ bregress <- function(formula, data, robust = FALSE) {
 
     # Handle very small p-values
     if (p_val < 0.0005) {
-      p_str <- "   0.000"
+      p_str <- "  0.000"
     } else {
-      p_str <- sprintf("%8.3f", p_val)
+      p_str <- sprintf("%7.3f", p_val)
     }
 
-    # Print with exact spacing
-    cat(sprintf("%12s", var_name), " | ",
-        sprintf("%10.7g", coef_val), "  ",
-        sprintf("%10.7g", se_val),
-        sprintf("%8.2f", t_val),
-        p_str, "    ",
-        sprintf("%10.7g", ci_low), "  ",
-        sprintf("%10.7g", ci_high),
+    # Print with consistent column positions matching the header
+    cat(sprintf("%*s", var_col_width, var_name), " | ",
+        format_coef(coef_val, 10), "  ",  # Coefficient column
+        format_coef(se_val, 9), "  ",      # Std. err. column
+        sprintf("%6.2f", t_val), "  ",     # t column
+        p_str, "    ",                      # P>|t| column
+        format_coef(ci_low, 10), " ",      # Lower CI (reduced spacing)
+        format_coef(ci_high, 10),          # Upper CI (ends at the "]")
         "\n", sep = "")
   }
-  cat("------------------------------------------------------------------------------\n")
+  cat(separator_line, "\n")
 
   # Return the model invisibly
   invisible(model)
