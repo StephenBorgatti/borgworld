@@ -140,8 +140,8 @@ bregress <- function(data, formula, robust = FALSE) {
   # Find the longest variable name to determine column width
   all_var_names <- coef_names
   max_var_length <- max(nchar(all_var_names), nchar(dep_var))
-  # Use at least 20 characters for the first column, matching Stata
-  var_col_width <- max(20, max_var_length)
+  # Use at least the same width as the "Source" column (12 chars) for consistency
+  var_col_width <- max(12, max_var_length)
 
   # Header for coefficient table with properly aligned columns
   header_line <- sprintf("%*s | Coefficient  Std. err.      t    P>|t|     [95%% conf. interval]",
@@ -229,7 +229,7 @@ bregress <- function(data, formula, robust = FALSE) {
   cat(separator_line, "\n")
 
   # Calculate VIF and Tolerance for predictors (exclude intercept)
-  if (k > 0) {  # Only if there are predictors
+  if (k > 1) {  # Only if there are 2 or more predictors
     # Get the model matrix without intercept
     X <- model.matrix(model)[, -1, drop = FALSE]
 
