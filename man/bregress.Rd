@@ -4,12 +4,12 @@
 \alias{bregress}
 \title{Stata-style regression output for linear models}
 \usage{
-bregress(formula, data, robust = FALSE)
+bregress(data, formula, robust = FALSE)
 }
 \arguments{
-\item{formula}{A formula object specifying the model}
-
 \item{data}{A data frame containing the variables}
+
+\item{formula}{A formula object specifying the model}
 
 \item{robust}{Logical, whether to use robust standard errors (requires sandwich package)}
 }
@@ -21,10 +21,14 @@ Produces regression output that mimics Stata's regress command format
 }
 \examples{
 # Basic regression
-bregress(mpg ~ wt + hp, data = mtcars)
+bregress(mtcars, mpg ~ wt + hp)
+
+# With piping
+library(dplyr)
+mtcars \%>\% bregress(mpg ~ wt + hp)
 
 # With robust standard errors (if sandwich package is installed)
 \dontrun{
-bregress(mpg ~ wt + hp, data = mtcars, robust = TRUE)
+bregress(mtcars, mpg ~ wt + hp, robust = TRUE)
 }
 }

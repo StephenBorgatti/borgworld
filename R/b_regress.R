@@ -2,8 +2,8 @@
 #'
 #' Produces regression output that mimics Stata's regress command format
 #'
-#' @param formula A formula object specifying the model
 #' @param data A data frame containing the variables
+#' @param formula A formula object specifying the model
 #' @param robust Logical, whether to use robust standard errors (requires sandwich package)
 #'
 #' @return Invisibly returns the fitted lm model object
@@ -13,13 +13,17 @@
 #'
 #' @examples
 #' # Basic regression
-#' bregress(mpg ~ wt + hp, data = mtcars)
+#' bregress(mtcars, mpg ~ wt + hp)
+#'
+#' # With piping
+#' library(dplyr)
+#' mtcars %>% bregress(mpg ~ wt + hp)
 #'
 #' # With robust standard errors (if sandwich package is installed)
 #' \dontrun{
-#' bregress(mpg ~ wt + hp, data = mtcars, robust = TRUE)
+#' bregress(mtcars, mpg ~ wt + hp, robust = TRUE)
 #' }
-bregress <- function(formula, data, robust = FALSE) {
+bregress <- function(data, formula, robust = FALSE) {
   # Convert string to formula if needed
   if (is.character(formula)) {
     formula <- as.formula(formula)
@@ -159,24 +163,37 @@ bregress <- function(formula, data, robust = FALSE) {
 
   # Helper function to format numbers that might need scientific notation
   format_coef <- function(x, width = 11) {
-    # For very small or very large numbers, use compact scientific notation
-    if (abs(x) < 1e-4 || abs(x) > 1e6) {
-      # Use only 2 decimal places in scientific notation to save space
-      if (abs(x) < 1e-10 || abs(x) > 1e10) {
-        formatted <- sprintf("%.1e", x)
-      } else {
-        formatted <- sprintf("%.2e", x)
-      }
+    # Determine the best format based on the magnitude
+    if (is.na(x) || is.infinite(x)) {
+      formatted <- sprintf("%*s", width, "NA")
+    } else if (abs(x) < 1e-4 && x != 0) {
+      # Very small numbers: use scientific notation
+      formatted <- sprintf("%.2e", x)
+    } else if (abs(x) >= 1e7) {
+      # Very large numbers: use scientific notation
+      formatted <- sprintf("%.2e", x)
+    } else if (abs(x) >= 10000) {
+      # Large numbers: fewer decimal places
+      formatted <- sprintf("%.1f", x)
+    } else if (abs(x) >= 100) {
+      # Medium-large numbers
+      formatted <- sprintf("%.3f", x)
+    } else if (abs(x) >= 10) {
+      # Medium numbers
+      formatted <- sprintf("%.4f", x)
+    } else if (abs(x) >= 1) {
+      # Small-medium numbers
+      formatted <- sprintf("%.5f", x)
     } else {
-      # For normal-sized numbers, use fixed decimal places
-      if (abs(x) >= 10) {
-        formatted <- sprintf("%.5f", x)
-      } else if (abs(x) >= 1) {
-        formatted <- sprintf("%.6f", x)
-      } else {
-        formatted <- sprintf("%.7f", x)
-      }
+      # Small numbers but not tiny
+      formatted <- sprintf("%.6f", x)
     }
+
+    # If it's still too wide, force scientific notation
+    if (nchar(formatted) > width) {
+      formatted <- sprintf("%.2e", x)
+    }
+
     # Right-align in the field
     sprintf("%*s", width, formatted)
   }
