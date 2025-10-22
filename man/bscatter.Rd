@@ -4,12 +4,12 @@
 \alias{bscatter}
 \title{Scatterplot with optional color and regression line}
 \usage{
-bscatter(df, x, y, color_by = NULL, add_lm = TRUE, se = TRUE)
+bscatter(df, y, x, color_by = NULL, add_lm = TRUE, se = TRUE)
 }
 \arguments{
 \item{df}{A data frame or tibble.}
 
-\item{x, y}{Column names for the axes (unquoted).}
+\item{y, x}{Column names for the axes (unquoted).}
 
 \item{color_by}{Optional column for point colors (unquoted).}
 
@@ -29,12 +29,12 @@ color points by a third variable, and add a global OLS regression line
 if (requireNamespace("palmerpenguins", quietly = TRUE)) {
   data(penguins, package = "palmerpenguins")
   # Simple scatter
-  bscatter(penguins, flipper_length_mm, body_mass_g)
+  bscatter(penguins, body_mass_g, flipper_length_mm)
 
   # Colored by species, with regression line
-  bscatter(penguins, flipper_length_mm, body_mass_g, color_by = species)
+  bscatter(penguins, fbody_mass_g, flipper_length_mm, color_by = species)
 
   # Without SE band
-  bscatter(penguins, flipper_length_mm, body_mass_g, species, se = FALSE)
+  bscatter(penguins, fbody_mass_g, flipper_length_mm, species, se = FALSE)
 }
 }

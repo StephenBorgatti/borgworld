@@ -98,9 +98,26 @@ bregress <- function(data, formula, robust = FALSE) {
     cat("\nLinear regression with robust standard errors\n")
   }
 
-  # Print ANOVA table with fixed column widths (Stata-like)
-  w_src <- 12; w_ss <- 14; w_df <- 9; w_ms <- 14
+  # Format the SS, DF, and MS values first to determine needed widths
+  ss_model_s <- formatC(ss_model, digits = 7, format = "g")
+  ss_resid_s <- formatC(ss_resid, digits = 7, format = "g")
+  ss_total_s <- formatC(ss_total, digits = 7, format = "g")
 
+  ms_model_s <- formatC(ms_model, digits = 7, format = "g")
+  ms_resid_s <- formatC(ms_resid, digits = 7, format = "g")
+  ms_total_s <- formatC(ss_total/df_total, digits = 7, format = "g")
+
+  df_model_s <- as.character(df_model)
+  df_resid_s <- as.character(df_resid)
+  df_total_s <- as.character(df_total)
+
+  # Calculate dynamic column widths based on actual data
+  w_src <- 12  # Keep Source column fixed
+  w_ss <- max(nchar("SS"), nchar(ss_model_s), nchar(ss_resid_s), nchar(ss_total_s)) + 2
+  w_df <- max(nchar("df"), nchar(df_model_s), nchar(df_resid_s), nchar(df_total_s)) + 2
+  w_ms <- max(nchar("MS"), nchar(ms_model_s), nchar(ms_resid_s), nchar(ms_total_s)) + 2
+
+  # Print ANOVA table with dynamic column widths
   header <- sprintf("%*s | %*s %*s %*s   Number of obs   = %9d",
                     w_src, "Source", w_ss, "SS", w_df, "df", w_ms, "MS", n)
   cat("\n", header, "\n", sep = "")
