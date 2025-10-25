@@ -1,6 +1,6 @@
 Package: borgworld
 Title: Easy, Nicer-Output Stats Helpers
-Version: 0.9.5
+Version: 0.9.6
 Authors@R: 
     person("Steve", "Borgatti", email = "sborgatti@uky.edu", role = c("aut","cre"))
 Description: Small, prefix-based helpers (b*) that provide simpler syntax
@@ -21,6 +21,9 @@ Imports:
     sandwich,
     stats,
     tidyr,
+    cluster,
+    googlesheets4,
+    psych,
     utils
 URL: https://github.com/StephenBorgatti/borgworld
 BugReports: https://github.com/StephenBorgatti/borgworld/issues
