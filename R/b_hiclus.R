@@ -40,6 +40,7 @@
 #' # Or with dissimilarities
 #' dissim_df <- as.data.frame(as.matrix(dist(iris[,1:4])))
 #' result2 <- bhiclus(dissim_df, type = "diss")
+#' @importFrom stats as.dist as.formula cophenetic
 
 bhiclus <- function(data,
                     type,  # No default - force user to specify

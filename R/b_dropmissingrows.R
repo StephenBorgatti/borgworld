@@ -1,0 +1,31 @@
+#' Drop rows containing only missing values
+#'
+#' Removes rows from a data frame or tibble where all values are NA.
+#' This differs from \code{tidyr::drop_na()} which removes rows containing
+#' any NA values.
+#'
+#' @param data A data frame or tibble.
+#'
+#' @return A data frame or tibble with rows containing only NA values removed.
+#'   The class and attributes of the input are preserved.
+#'
+#' @examples
+#' # Create example data with some all-NA rows
+#' df <- data.frame(
+#'   x = c(1, NA, 3, NA),
+#'   y = c(2, NA, NA, 4),
+#'   z = c(NA, NA, 5, 6)
+#' )
+#'
+#' # Remove rows where all values are NA
+#' bdropmissingrows(df)
+#' # Returns rows 1, 3, and 4 (row 2 is dropped)
+#'
+#' @export
+bdropmissingrows <- function(data) {
+  # Count non-NA values per row
+  non_na_count <- rowSums(!is.na(data))
+
+  # Keep rows with at least one non-NA value
+  data[non_na_count > 0, , drop = FALSE]
+}

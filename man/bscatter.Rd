@@ -35,6 +35,6 @@ if (requireNamespace("palmerpenguins", quietly = TRUE)) {
   bscatter(penguins, fbody_mass_g, flipper_length_mm, color_by = species)
 
   # Without SE band
-  bscatter(penguins, fbody_mass_g, flipper_length_mm, species, se = FALSE)
+  bscatter(penguins, body_mass_g, flipper_length_mm, species, se = FALSE)
 }
 }

@@ -53,6 +53,7 @@
 #'           pos = 1)  # All labels below points
 #' }
 #'
+
 #' @export
 bplotcoord <- function(coords, labels = NULL, color = NULL,
                        main = "MDS Plot", cex = 1, cex.text = 0.8,

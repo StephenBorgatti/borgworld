@@ -41,3 +41,4 @@ unlink("C:/Users/sborg2/AppData/Local/R/win-library/4.5/borgworld", recursive = 
 devtools::document()   # Regenerate documentation
 devtools::install()    # Reinstall the package
 devtools::load_all()   # Load it again
+mt
