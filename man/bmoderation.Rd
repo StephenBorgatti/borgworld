@@ -6,23 +6,26 @@
 \usage{
 bmoderation(
   data,
-  focal,
-  moderator,
-  outcome,
+  Y,
+  X,
+  M,
   covariates = NULL,
   robust = FALSE,
   alpha = 0.05,
-  n_points = 50
+  n_points = 50,
+  plot = TRUE,
+  plot_method = "sd",
+  plot_custom_values = NULL
 )
 }
 \arguments{
 \item{data}{A data frame containing the variables}
 
-\item{focal}{Character string naming the focal predictor variable}
+\item{Y}{Character string naming the outcome variable}
 
-\item{moderator}{Character string naming the moderator variable}
+\item{X}{Character string naming the focal predictor variable}
 
-\item{outcome}{Character string naming the outcome variable}
+\item{M}{Character string naming the moderator variable}
 
 \item{covariates}{Optional character vector of covariate names to include}
 
@@ -31,6 +34,12 @@ bmoderation(
 \item{alpha}{Significance level for confidence intervals (default = 0.05)}
 
 \item{n_points}{Number of points to evaluate across moderator range (default = 50)}
+
+\item{plot}{Logical, whether to create an interaction plot (default = TRUE)}
+
+\item{plot_method}{Method for selecting moderator values in plot (default = "sd")}
+
+\item{plot_custom_values}{Custom values for moderator if plot_method = "custom"}
 }
 \value{
 Invisibly returns a list containing the model and conditional effects
@@ -41,9 +50,6 @@ regions of significance for continuous moderators, or simple effects for
 binary/factor moderators
 }
 \examples{
-# Moderation with binary moderator
-bmoderation(bank, focal = "yulesq", moderator = "female", outcome = "leadindeg")
-
 # Moderation with continuous moderator
-bmoderation(mtcars, focal = "wt", moderator = "hp", outcome = "mpg")
+bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp")
 }

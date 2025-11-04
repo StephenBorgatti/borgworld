@@ -5,37 +5,38 @@
 #' binary/factor moderators
 #'
 #' @param data A data frame containing the variables
-#' @param focal Character string naming the focal predictor variable
-#' @param moderator Character string naming the moderator variable
-#' @param outcome Character string naming the outcome variable
+#' @param Y Character string naming the outcome variable
+#' @param X Character string naming the focal predictor variable
+#' @param M Character string naming the moderator variable
 #' @param covariates Optional character vector of covariate names to include
 #' @param robust Logical, whether to use robust standard errors
 #' @param alpha Significance level for confidence intervals (default = 0.05)
 #' @param n_points Number of points to evaluate across moderator range (default = 50)
+#' @param plot Logical, whether to create an interaction plot (default = TRUE)
+#' @param plot_method Method for selecting moderator values in plot (default = "sd")
+#' @param plot_custom_values Custom values for moderator if plot_method = "custom"
 #'
 #' @return Invisibly returns a list containing the model and conditional effects
 #'
-#' @importFrom stats lm coef vcov qt pt quantile
+#' @importFrom stats lm coef vcov qt pt quantile sd
 #' @export
 #'
 #' @examples
-#' # Moderation with binary moderator
-#' bmoderation(bank, focal = "yulesq", moderator = "female", outcome = "leadindeg")
-#'
 #' # Moderation with continuous moderator
-#' bmoderation(mtcars, focal = "wt", moderator = "hp", outcome = "mpg")
-bmoderation <- function(data, focal, moderator, outcome, covariates = NULL,
-                        robust = FALSE, alpha = 0.05, n_points = 50) {
+#' bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp")
+bmoderation <- function(data, Y, X, M, covariates = NULL,
+                        robust = FALSE, alpha = 0.05, n_points = 50,
+                        plot = TRUE, plot_method = "sd", plot_custom_values = NULL) {
 
   # Check that required columns exist
-  required_cols <- c(focal, moderator, outcome, covariates)
+  required_cols <- c(Y, X, M, covariates)
   if (!all(required_cols %in% names(data))) {
     missing <- required_cols[!required_cols %in% names(data)]
     stop("Variables not found in data: ", paste(missing, collapse = ", "))
   }
 
   # Determine if moderator is binary or factor
-  mod_values <- data[[moderator]]
+  mod_values <- data[[M]]
   unique_vals <- unique(mod_values[!is.na(mod_values)])
   n_unique <- length(unique_vals)
   is_binary <- n_unique == 2
@@ -59,16 +60,16 @@ bmoderation <- function(data, focal, moderator, outcome, covariates = NULL,
     cov_string <- ""
   }
 
-  formula_string <- paste(outcome, "~", focal, "*", moderator, cov_string)
+  formula_string <- paste(Y, "~", X, "*", M, cov_string)
   formula <- as.formula(formula_string)
 
   # Print header for moderation analysis
   cat("\n==============================================================================\n")
   cat("MODERATION ANALYSIS\n")
   cat("==============================================================================\n")
-  cat("Focal predictor:", focal, "\n")
-  cat("Moderator:", moderator, "\n")
-  cat("Outcome:", outcome, "\n")
+  cat("Outcome (Y):", Y, "\n")
+  cat("Focal predictor (X):", X, "\n")
+  cat("Moderator (M):", M, "\n")
   if (!is.null(covariates)) {
     cat("Covariates:", paste(covariates, collapse = ", "), "\n")
   }
@@ -92,10 +93,10 @@ bmoderation <- function(data, focal, moderator, outcome, covariates = NULL,
   }
 
   # Find coefficient indices
-  focal_index <- which(names(coefs) == focal)
-  interaction_name <- paste(focal, moderator, sep = ":")
+  focal_index <- which(names(coefs) == X)
+  interaction_name <- paste(X, M, sep = ":")
   if (!interaction_name %in% names(coefs)) {
-    interaction_name <- paste(moderator, focal, sep = ":")
+    interaction_name <- paste(M, X, sep = ":")
   }
   interaction_index <- which(names(coefs) == interaction_name)
 
@@ -162,10 +163,10 @@ bmoderation <- function(data, focal, moderator, outcome, covariates = NULL,
       for (i in 1:length(jn_points)) {
         if (jn_points[i] >= mod_min && jn_points[i] <= mod_max) {
           cat(sprintf("  Point %d: %s = %.4f (within observed range)\n",
-                      i, moderator, jn_points[i]))
+                      i, M, jn_points[i]))
         } else {
           cat(sprintf("  Point %d: %s = %.4f (outside observed range)\n",
-                      i, moderator, jn_points[i]))
+                      i, M, jn_points[i]))
         }
       }
     } else {
@@ -174,7 +175,7 @@ bmoderation <- function(data, focal, moderator, outcome, covariates = NULL,
     }
 
     cat("\nObserved range of moderator:\n")
-    cat(sprintf("  %s: [%.4f, %.4f]\n", moderator, mod_min, mod_max))
+    cat(sprintf("  %s: [%.4f, %.4f]\n", M, mod_min, mod_max))
 
   } else {
     # BINARY/CATEGORICAL MODERATOR: Simple Effects
@@ -239,14 +240,14 @@ bmoderation <- function(data, focal, moderator, outcome, covariates = NULL,
   }
 
   # Format and print the conditional effects table
-  cat("\nConditional effect of", focal, "at values of the moderator:\n")
+  cat("\nConditional effect of", X, "at values of the moderator:\n")
 
   # Determine column widths based on variable name length
-  mod_name_width <- max(8, nchar(moderator))
+  mod_name_width <- max(8, nchar(M))
 
   # Print header
   header <- sprintf("%*s    effect        se         t         p      LLCI      ULCI",
-                    mod_name_width, moderator)
+                    mod_name_width, M)
   cat(header, "\n")
 
   # Print each row
@@ -296,17 +297,42 @@ bmoderation <- function(data, focal, moderator, outcome, covariates = NULL,
 
   cat("\n")
 
-  # Return results invisibly
+  # Return results
   result_list <- list(
     model = model,
     coefficients = coefs,
-    focal = focal,
-    moderator = moderator,
+    focal = X,
+    moderator = M,
+    outcome = Y,
     conditional_effects = results
   )
 
   if (use_jn) {
     result_list$johnson_neyman_points <- jn_points
+  }
+
+  # Create plot if requested
+  if (plot) {
+    # Determine best method for plotting based on moderator type
+    if (!use_jn) {
+      # Categorical moderator - will use all levels
+      plot_method <- "categorical"
+    } else if (plot_method == "sd") {
+      # Check if SD method would go out of range
+      mod_mean <- mean(data[[M]], na.rm = TRUE)
+      mod_sd <- sd(data[[M]], na.rm = TRUE)
+      mod_min <- min(data[[M]], na.rm = TRUE)
+      mod_max <- max(data[[M]], na.rm = TRUE)
+
+      if ((mod_mean - mod_sd) < mod_min || (mod_mean + mod_sd) > mod_max) {
+        cat("\nNote: Defaulting to percentile method for plot as mean +/- 1 SD exceeds data range.\n")
+        plot_method <- "percentile"
+      }
+    }
+
+    # Call the plotting function
+    binteraction_plot(result_list, method = plot_method,
+                      custom_values = plot_custom_values, print_table = FALSE)
   }
 
   invisible(result_list)
