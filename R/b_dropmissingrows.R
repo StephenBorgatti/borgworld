@@ -29,3 +29,4 @@ bdropmissingrows <- function(data) {
   # Keep rows with at least one non-NA value
   data[non_na_count > 0, , drop = FALSE]
 }
+
