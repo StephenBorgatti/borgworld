@@ -333,6 +333,10 @@ bregress <- function(data, formula, robust = FALSE) {
         "\n", sep = "")
     cat(vif_separator, "\n")
   }
+  # return calculated vars with NAs for cases with NA
+  model$fitted.values <- fitted(model)
+  model$residuals <- resid(model)
+  model$effects <- effects(model)
 
   # Return the model invisibly
   invisible(model)

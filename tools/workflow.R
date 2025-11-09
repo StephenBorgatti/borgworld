@@ -23,6 +23,8 @@ usethis::use_version("patch", push = TRUE)
 ##occasionally
 # Periodically, for full testing:
 devtools::install()   # Install the package
+# or from different folder
+devtools::install("C:/Users/sborg2/R/borgworld")
 # Restart R (Session > Restart R in RStudio)
 library(borgworld)    # Test as users would use it
 help(package = "borgworld")  # Check documentation
