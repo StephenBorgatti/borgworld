@@ -9,6 +9,13 @@
 #' @param X Character string naming the focal predictor variable
 #' @param M Character string naming the moderator variable
 #' @param covariates Optional character vector of covariate names to include
+#' @param center Character string specifying centering option: "none" (default),
+#'   "all" (center all predictors), or "non-binary" (center only non-binary predictors).
+#'   Note: Centering affects coefficient interpretation but not the location of
+#'   Johnson-Neyman points or conditional effects when viewed in original scale.
+#' @param display_scale Character string specifying output display: "original" (default)
+#'   shows all moderator values in original units, "centered" shows values in
+#'   centered scale when centering is applied (matching PROCESS macro behavior)
 #' @param robust Logical, whether to use robust standard errors
 #' @param alpha Significance level for confidence intervals (default = 0.05)
 #' @param n_points Number of points to evaluate across moderator range (default = 50)
@@ -24,9 +31,33 @@
 #' @examples
 #' # Moderation with continuous moderator
 #' bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp")
+#'
+#' # With centering of non-binary variables (original scale display)
+#' bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp", center = "non-binary")
+#'
+#' # With centering and centered scale display (like PROCESS macro)
+#' bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp",
+#'             center = "non-binary", display_scale = "centered")
 bmoderation <- function(data, Y, X, M, covariates = NULL,
+                        center = "none", display_scale = "original",
                         robust = FALSE, alpha = 0.05, n_points = 50,
                         plot = TRUE, plot_method = "sd", plot_custom_values = NULL) {
+
+  # Check centering argument
+  if (!center %in% c("none", "all", "non-binary")) {
+    stop("center must be 'none', 'all', or 'non-binary'")
+  }
+
+  # Check display_scale argument
+  if (!display_scale %in% c("original", "centered")) {
+    stop("display_scale must be 'original' or 'centered'")
+  }
+
+  # If no centering is applied, display_scale must be original
+  if (center == "none" && display_scale == "centered") {
+    warning("display_scale='centered' has no effect when center='none'. Using 'original'.")
+    display_scale <- "original"
+  }
 
   # Check that required columns exist
   required_cols <- c(Y, X, M, covariates)
@@ -35,7 +66,42 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
     stop("Variables not found in data: ", paste(missing, collapse = ", "))
   }
 
-  # Determine if moderator is binary or factor
+  # Create a working copy of the data to avoid modifying the original
+  data_work <- data
+
+  # Helper function to check if a variable is binary
+  is_binary_var <- function(x) {
+    unique_vals <- unique(x[!is.na(x)])
+    return(length(unique_vals) == 2)
+  }
+
+  # Store original means for reporting and back-transformation if needed
+  original_means <- list()
+  centered_vars <- character()
+
+  # Apply centering based on the option chosen
+  if (center != "none") {
+    # List of variables to potentially center (not including Y)
+    vars_to_consider <- c(X, M, covariates)
+
+    for (var in vars_to_consider) {
+      should_center <- FALSE
+
+      if (center == "all") {
+        should_center <- TRUE
+      } else if (center == "non-binary") {
+        should_center <- !is_binary_var(data[[var]])
+      }
+
+      if (should_center) {
+        original_means[[var]] <- mean(data[[var]], na.rm = TRUE)
+        data_work[[var]] <- data[[var]] - original_means[[var]]
+        centered_vars <- c(centered_vars, var)
+      }
+    }
+  }
+
+  # Determine if moderator is binary or factor (using original data for this check)
   mod_values <- data[[M]]
   unique_vals <- unique(mod_values[!is.na(mod_values)])
   n_unique <- length(unique_vals)
@@ -73,10 +139,20 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
   if (!is.null(covariates)) {
     cat("Covariates:", paste(covariates, collapse = ", "), "\n")
   }
+
+  # Print centering information
+  cat("\nCentering option: ", center, "\n")
+  if (length(centered_vars) > 0) {
+    cat("Centered variables:", paste(centered_vars, collapse = ", "), "\n")
+    cat("Display scale:", display_scale, "\n")
+  } else {
+    cat("No variables were centered.\n")
+  }
+
   cat("\n")
 
-  # Run regression using bregress for consistent output
-  model <- bregress(data, formula, robust = robust)
+  # Run regression using bregress for consistent output (use centered data)
+  model <- bregress(data_work, formula, robust = robust)
 
   # Extract coefficients and variance-covariance matrix
   coefs <- coef(model)
@@ -119,7 +195,12 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
   if (use_jn) {
     # CONTINUOUS MODERATOR: Johnson-Neyman Analysis
 
-    # Calculate Johnson-Neyman points
+    # Note: If centering was applied, the J-N calculations are performed on the
+    # centered scale, but the points will be converted back to the original scale
+    # for reporting. The location of significance transitions does not change with
+    # centering - only the numerical representation changes.
+
+    # Calculate Johnson-Neyman points (in centered scale if centering was applied)
     a <- b_interaction^2 - t_crit^2 * var_interaction
     b <- 2 * (b_focal * b_interaction - t_crit^2 * cov_focal_interaction)
     c <- b_focal^2 - t_crit^2 * var_focal
@@ -133,22 +214,53 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
       jn_points <- sort(c(jn_point1, jn_point2))
     }
 
-    # Get range of moderator
+    # Get range of moderator (use original data for determining range)
     mod_min <- min(mod_values, na.rm = TRUE)
     mod_max <- max(mod_values, na.rm = TRUE)
     mod_range <- mod_max - mod_min
 
     # Create sequence of moderator values
-    eval_points <- seq(mod_min, mod_max, length.out = n_points)
+    eval_points_original <- seq(mod_min, mod_max, length.out = n_points)
 
-    # Add J-N points if they're within or near the data range
-    if (!is.null(jn_points)) {
-      extended_min <- mod_min - 0.1 * mod_range
-      extended_max <- mod_max + 0.1 * mod_range
+    # Determine display points based on display_scale preference
+    if (M %in% centered_vars) {
+      eval_points_centered <- eval_points_original - original_means[[M]]
 
-      for (jn in jn_points) {
-        if (jn >= extended_min && jn <= extended_max) {
-          eval_points <- sort(unique(c(eval_points, jn)))
+      # Add J-N points if they're within or near the data range
+      if (!is.null(jn_points)) {
+        extended_min_centered <- (mod_min - original_means[[M]]) - 0.1 * mod_range
+        extended_max_centered <- (mod_max - original_means[[M]]) + 0.1 * mod_range
+
+        for (jn in jn_points) {
+          if (jn >= extended_min_centered && jn <= extended_max_centered) {
+            eval_points_centered <- sort(unique(c(eval_points_centered, jn)))
+            eval_points_original <- sort(unique(c(eval_points_original, jn + original_means[[M]])))
+          }
+        }
+      }
+
+      # Set evaluation and display points based on display_scale
+      if (display_scale == "centered") {
+        eval_points <- eval_points_centered
+        display_points <- eval_points_centered
+      } else {
+        eval_points <- eval_points_centered  # for calculations
+        display_points <- eval_points_original  # for display
+      }
+    } else {
+      eval_points <- eval_points_original
+      display_points <- eval_points_original
+
+      # Add J-N points if they're within or near the data range
+      if (!is.null(jn_points)) {
+        extended_min <- mod_min - 0.1 * mod_range
+        extended_max <- mod_max + 0.1 * mod_range
+
+        for (jn in jn_points) {
+          if (jn >= extended_min && jn <= extended_max) {
+            eval_points <- sort(unique(c(eval_points, jn)))
+            display_points <- eval_points
+          }
         }
       }
     }
@@ -161,12 +273,34 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
     if (!is.null(jn_points)) {
       cat("\nJohnson-Neyman significance transition points:\n")
       for (i in 1:length(jn_points)) {
-        if (jn_points[i] >= mod_min && jn_points[i] <= mod_max) {
-          cat(sprintf("  Point %d: %s = %.4f (within observed range)\n",
-                      i, M, jn_points[i]))
+        # Display J-N points based on display_scale preference
+        if (M %in% centered_vars && display_scale == "centered") {
+          jn_display <- jn_points[i]
+          # Check if within centered range
+          centered_min <- mod_min - original_means[[M]]
+          centered_max <- mod_max - original_means[[M]]
+          if (jn_display >= centered_min && jn_display <= centered_max) {
+            cat(sprintf("  Point %d: %s = %.4f (within observed range)\n",
+                        i, M, jn_display))
+          } else {
+            cat(sprintf("  Point %d: %s = %.4f (outside observed range)\n",
+                        i, M, jn_display))
+          }
         } else {
-          cat(sprintf("  Point %d: %s = %.4f (outside observed range)\n",
-                      i, M, jn_points[i]))
+          # Display in original scale
+          if (M %in% centered_vars) {
+            jn_display <- jn_points[i] + original_means[[M]]
+          } else {
+            jn_display <- jn_points[i]
+          }
+
+          if (jn_display >= mod_min && jn_display <= mod_max) {
+            cat(sprintf("  Point %d: %s = %.4f (within observed range)\n",
+                        i, M, jn_display))
+          } else {
+            cat(sprintf("  Point %d: %s = %.4f (outside observed range)\n",
+                        i, M, jn_display))
+          }
         }
       }
     } else {
@@ -175,31 +309,67 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
     }
 
     cat("\nObserved range of moderator:\n")
-    cat(sprintf("  %s: [%.4f, %.4f]\n", M, mod_min, mod_max))
+    if (M %in% centered_vars && display_scale == "centered") {
+      cat(sprintf("  %s: [%.4f, %.4f]\n", M,
+                  mod_min - original_means[[M]],
+                  mod_max - original_means[[M]]))
+    } else {
+      cat(sprintf("  %s: [%.4f, %.4f]\n", M, mod_min, mod_max))
+    }
 
   } else {
     # BINARY/CATEGORICAL MODERATOR: Simple Effects
 
     # Sort unique values for consistent display
-    eval_points <- sort(unique_vals)
+    eval_points_original <- sort(unique_vals)
+
+    # If moderator was centered, convert to centered scale
+    if (M %in% centered_vars) {
+      eval_points_centered <- eval_points_original - original_means[[M]]
+
+      # Set evaluation and display points based on display_scale
+      if (display_scale == "centered") {
+        eval_points <- eval_points_centered
+        display_points <- eval_points_centered
+      } else {
+        eval_points <- eval_points_centered  # for calculations
+        display_points <- eval_points_original  # for display
+      }
+    } else {
+      eval_points <- eval_points_original
+      display_points <- eval_points_original
+    }
 
     cat("\n==============================================================================\n")
     cat("CONDITIONAL EFFECTS\n")
     cat("==============================================================================\n")
 
     if (is_binary) {
-      cat("\nModerator is binary with values:", paste(eval_points, collapse = ", "), "\n")
+      if (M %in% centered_vars && display_scale == "centered") {
+        cat("\nModerator is binary with values:",
+            paste(sprintf("%.4f", display_points), collapse = ", "),
+            "(centered)\n")
+      } else {
+        cat("\nModerator is binary with values:",
+            paste(display_points, collapse = ", "), "\n")
+      }
     } else if (is_factor) {
       cat("\nModerator is a factor with", n_unique, "levels\n")
     } else {
-      cat("\nModerator appears categorical with", n_unique, "unique values:",
-          paste(eval_points, collapse = ", "), "\n")
+      if (M %in% centered_vars && display_scale == "centered") {
+        cat("\nModerator appears categorical with", n_unique, "unique values:",
+            paste(sprintf("%.4f", display_points), collapse = ", "),
+            "(centered)\n")
+      } else {
+        cat("\nModerator appears categorical with", n_unique, "unique values:",
+            paste(display_points, collapse = ", "), "\n")
+      }
     }
   }
 
   # Calculate conditional effects at each evaluation point
   results <- data.frame(
-    moderator = eval_points,
+    moderator = display_points,  # Store in display scale
     effect = NA,
     se = NA,
     t = NA,
@@ -209,7 +379,7 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
   )
 
   for (i in 1:length(eval_points)) {
-    W <- eval_points[i]
+    W <- eval_points[i]  # Use centered/calculation value
 
     # Conditional effect
     effect <- b_focal + b_interaction * W
@@ -226,7 +396,7 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
     llci <- effect - margin
     ulci <- effect + margin
 
-    results[i, ] <- c(W, effect, se, t_stat, p_value, llci, ulci)
+    results[i, ] <- c(display_points[i], effect, se, t_stat, p_value, llci, ulci)
   }
 
   # Select points to display
@@ -264,8 +434,15 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
     # Mark J-N points with asterisk if they're in the display (only for continuous)
     marker <- ""
     if (use_jn && !is.null(jn_points)) {
-      for (jn in jn_points) {
-        if (abs(row$moderator - jn) < 0.0001) {
+      # Check against J-N points in the display scale
+      if (M %in% centered_vars && display_scale == "original") {
+        jn_display_vals <- jn_points + original_means[[M]]
+      } else {
+        jn_display_vals <- jn_points
+      }
+
+      for (jn_disp in jn_display_vals) {
+        if (abs(row$moderator - jn_disp) < 0.0001) {
           marker <- "*"
           break
         }
@@ -304,21 +481,35 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
     focal = X,
     moderator = M,
     outcome = Y,
-    conditional_effects = results
+    conditional_effects = results,
+    centering = center,
+    centered_vars = centered_vars,
+    original_means = original_means,
+    display_scale = display_scale
   )
 
   if (use_jn) {
-    result_list$johnson_neyman_points <- jn_points
+    # Store J-N points in the display scale
+    if (M %in% centered_vars && display_scale == "original") {
+      result_list$johnson_neyman_points <- jn_points + original_means[[M]]
+    } else {
+      result_list$johnson_neyman_points <- jn_points
+    }
   }
 
   # Create plot if requested
   if (plot) {
+    # Note: The plotting function receives moderator values in the display scale
+    # (stored in result_list$conditional_effects$moderator). If display_scale="centered"
+    # and centering was applied, plots will show centered values (matching PROCESS).
+    # If display_scale="original", plots show original units for interpretability.
+
     # Determine best method for plotting based on moderator type
     if (!use_jn) {
       # Categorical moderator - will use all levels
       plot_method <- "categorical"
     } else if (plot_method == "sd") {
-      # Check if SD method would go out of range
+      # Check if SD method would go out of range (use original data)
       mod_mean <- mean(data[[M]], na.rm = TRUE)
       mod_sd <- sd(data[[M]], na.rm = TRUE)
       mod_min <- min(data[[M]], na.rm = TRUE)

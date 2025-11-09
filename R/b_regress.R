@@ -30,7 +30,7 @@ bregress <- function(data, formula, robust = FALSE) {
   }
 
   # Fit the model
-  model <- lm(formula, data = data)
+  model <- lm(formula, data = data, na.action = na.exclude)
 
   # If robust standard errors requested, check for sandwich package
   if (robust) {

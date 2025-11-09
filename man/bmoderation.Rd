@@ -10,6 +10,8 @@ bmoderation(
   X,
   M,
   covariates = NULL,
+  center = "none",
+  display_scale = "original",
   robust = FALSE,
   alpha = 0.05,
   n_points = 50,
@@ -28,6 +30,15 @@ bmoderation(
 \item{M}{Character string naming the moderator variable}
 
 \item{covariates}{Optional character vector of covariate names to include}
+
+\item{center}{Character string specifying centering option: "none" (default),
+"all" (center all predictors), or "non-binary" (center only non-binary predictors).
+Note: Centering affects coefficient interpretation but not the location of
+Johnson-Neyman points or conditional effects when viewed in original scale.}
+
+\item{display_scale}{Character string specifying output display: "original" (default)
+shows all moderator values in original units, "centered" shows values in
+centered scale when centering is applied (matching PROCESS macro behavior)}
 
 \item{robust}{Logical, whether to use robust standard errors}
 
@@ -52,4 +63,11 @@ binary/factor moderators
 \examples{
 # Moderation with continuous moderator
 bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp")
+
+# With centering of non-binary variables (original scale display)
+bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp", center = "non-binary")
+
+# With centering and centered scale display (like PROCESS macro)
+bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp",
+            center = "non-binary", display_scale = "centered")
 }
