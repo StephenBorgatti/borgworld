@@ -69,9 +69,11 @@ bregress <- function(data, formula, robust = FALSE) {
   df_resid <- model$df.residual
   df_total <- n - 1
 
-  # Calculate sums of squares
-  ss_resid <- sum(resid(model)^2)
-  ss_total <- sum((model$model[[1]] - mean(model$model[[1]]))^2)
+  # Calculate sums of squares using model internals
+  ss_resid <- sum(model$residuals^2, na.rm = TRUE)
+  # Get the response variable from complete cases only
+  y_vals <- model.response(model.frame(model))
+  ss_total <- sum((y_vals - mean(y_vals))^2)
   ss_model <- ss_total - ss_resid
 
   # Mean squares

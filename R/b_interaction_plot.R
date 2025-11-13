@@ -240,9 +240,15 @@ binteraction_plot <- function(data, focal = NULL, moderator = NULL, outcome = NU
   # Add legend below the plot
   par(xpd = TRUE)  # Allow drawing outside plot region
 
-  # Calculate legend position - below the x-axis label
+  # Calculate legend position more precisely using margin information
   usr <- par("usr")
-  legend_y <- usr[3] - (usr[4] - usr[3]) * 0.15  # Position below plot
+  plot_height_inches <- par("pin")[2]  # Plot height in inches
+  user_range <- usr[4] - usr[3]  # Range in user coordinates
+  inches_to_user <- user_range / plot_height_inches  # Conversion factor
+
+  # X-axis label is typically ~0.5-0.6 inches from plot area
+  # Place legend ~1.0 inches below plot area (below the x-axis label)
+  legend_y <- usr[3] - (1.0 * inches_to_user)
 
   # Create legend text with line type indicators
   legend_text <- slope_info$label
@@ -277,7 +283,6 @@ binteraction_plot <- function(data, focal = NULL, moderator = NULL, outcome = NU
     cat(sprintf("%-20s %12s %12s %12s\n",
                 "Moderator Value", "Simple Slope", "Z-score", "Percentile"))
     cat(paste(rep("-", 68), collapse = ""), "\n")
-
     for (i in 1:nrow(slope_info)) {
       # Format moderator value based on type
       if (is_categorical) {

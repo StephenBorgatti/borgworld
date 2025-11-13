@@ -6,9 +6,9 @@
 \usage{
 bmoderation(
   data,
-  Y,
-  X,
-  M,
+  Y = NULL,
+  X = NULL,
+  M = NULL,
   covariates = NULL,
   center = "none",
   display_scale = "original",
@@ -17,7 +17,11 @@ bmoderation(
   n_points = 50,
   plot = TRUE,
   plot_method = "sd",
-  plot_custom_values = NULL
+  plot_custom_values = NULL,
+  y = NULL,
+  x = NULL,
+  m = NULL,
+  w = NULL
 )
 }
 \arguments{
@@ -51,6 +55,14 @@ centered scale when centering is applied (matching PROCESS macro behavior)}
 \item{plot_method}{Method for selecting moderator values in plot (default = "sd")}
 
 \item{plot_custom_values}{Custom values for moderator if plot_method = "custom"}
+
+\item{y}{Alias for Y (for convenience)}
+
+\item{x}{Alias for X (for convenience)}
+
+\item{m}{Alias for M (for convenience)}
+
+\item{w}{Alias for M (for compatibility)}
 }
 \value{
 Invisibly returns a list containing the model and conditional effects
@@ -63,6 +75,8 @@ binary/factor moderators
 \examples{
 # Moderation with continuous moderator
 bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp")
+# Also works with lowercase:
+bmoderation(mtcars, y = "mpg", x = "wt", m = "hp")
 
 # With centering of non-binary variables (original scale display)
 bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp", center = "non-binary")

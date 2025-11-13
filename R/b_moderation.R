@@ -22,6 +22,10 @@
 #' @param plot Logical, whether to create an interaction plot (default = TRUE)
 #' @param plot_method Method for selecting moderator values in plot (default = "sd")
 #' @param plot_custom_values Custom values for moderator if plot_method = "custom"
+#' @param y Alias for Y (for convenience)
+#' @param x Alias for X (for convenience)
+#' @param m Alias for M (for convenience)
+#' @param w Alias for M (for compatibility)
 #'
 #' @return Invisibly returns a list containing the model and conditional effects
 #'
@@ -31,6 +35,8 @@
 #' @examples
 #' # Moderation with continuous moderator
 #' bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp")
+#' # Also works with lowercase:
+#' bmoderation(mtcars, y = "mpg", x = "wt", m = "hp")
 #'
 #' # With centering of non-binary variables (original scale display)
 #' bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp", center = "non-binary")
@@ -38,10 +44,22 @@
 #' # With centering and centered scale display (like PROCESS macro)
 #' bmoderation(mtcars, Y = "mpg", X = "wt", M = "hp",
 #'             center = "non-binary", display_scale = "centered")
-bmoderation <- function(data, Y, X, M, covariates = NULL,
+bmoderation <- function(data, Y = NULL, X = NULL, M = NULL, covariates = NULL,
                         center = "none", display_scale = "original",
                         robust = FALSE, alpha = 0.05, n_points = 50,
-                        plot = TRUE, plot_method = "sd", plot_custom_values = NULL) {
+                        plot = TRUE, plot_method = "sd", plot_custom_values = NULL,
+                        y = NULL, x = NULL, m = NULL, w = NULL) {
+
+  # Handle parameter aliases - lowercase versions take precedence if both are specified
+  if (!is.null(y)) Y <- y
+  if (!is.null(x)) X <- x
+  if (!is.null(m)) M <- m
+  if (!is.null(w) && is.null(M) && is.null(m)) M <- w  # w as alias for M
+
+  # Check that required parameters are provided
+  if (is.null(Y) || is.null(X) || is.null(M)) {
+    stop("Must provide Y (or y), X (or x), and M (or m/w) parameters")
+  }
 
   # Check centering argument
   if (!center %in% c("none", "all", "non-binary")) {
@@ -151,8 +169,14 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
 
   cat("\n")
 
-  # Run regression using bregress for consistent output (use centered data)
-  model <- bregress(data_work, formula, robust = robust)
+  # Run regression using lm() (use centered data)
+  model <- lm(formula, data = data_work)
+
+  # Print regression results
+  cat("REGRESSION RESULTS\n")
+  cat("------------------------------------------------------------------------------\n")
+  print(summary(model))
+  cat("\n")
 
   # Extract coefficients and variance-covariance matrix
   coefs <- coef(model)
@@ -208,7 +232,7 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
     discriminant <- b^2 - 4*a*c
 
     jn_points <- NULL
-    if (discriminant >= 0 && a != 0) {
+    if (!is.na(discriminant) && !is.na(a) && discriminant >= 0 && a != 0) {
       jn_point1 <- (-b - sqrt(discriminant)) / (2*a)
       jn_point2 <- (-b + sqrt(discriminant)) / (2*a)
       jn_points <- sort(c(jn_point1, jn_point2))
@@ -425,7 +449,9 @@ bmoderation <- function(data, Y, X, M, covariates = NULL,
     row <- display_results[i, ]
 
     # Format p-value
-    if (row$p < 0.0001) {
+    if (is.na(row$p)) {
+      p_str <- "       NA"
+    } else if (row$p < 0.0001) {
       p_str <- "   0.0001"
     } else {
       p_str <- sprintf("%9.4f", row$p)
