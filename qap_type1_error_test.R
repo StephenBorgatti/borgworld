@@ -276,9 +276,9 @@ remove_transitive_edge <- function(adj) {
 ################################################################################
 
 cat("\n")
-cat("="*80, "\n", sep="")
+cat(paste(rep("=", 80), collapse=""), "\n", sep="")
 cat("QAP CORRELATION TYPE I ERROR TEST\n")
-cat("="*80, "\n\n", sep="")
+cat(paste(rep("=", 80), collapse=""), "\n\n", sep="")
 
 # Simulation parameters
 n_simulations <- 2000  # Number of independent (X,Y) pairs
@@ -299,9 +299,9 @@ results_summary <- list()
 
 for (n_nodes in network_sizes) {
   cat("\n")
-  cat("-"*80, "\n", sep="")
+  cat(paste(rep("-", 80), collapse=""), "\n", sep="")
   cat(sprintf("NETWORK SIZE: n = %d nodes\n", n_nodes))
-  cat("-"*80, "\n\n", sep="")
+  cat(paste(rep("-", 80), collapse=""), "\n\n", sep="")
 
   # Storage for results
   p_values <- numeric(n_simulations)
@@ -330,9 +330,9 @@ for (n_nodes in network_sizes) {
 
     # Generate two independent networks with desired properties
     X <- generate_network(n_nodes, target_density, target_reciprocity,
-                         target_transitivity)
+                          target_transitivity)
     Y <- generate_network(n_nodes, target_density, target_reciprocity,
-                         target_transitivity)
+                          target_transitivity)
 
     # Record actual network properties
     reciprocity_X[i] <- calculate_reciprocity(X)
@@ -399,9 +399,9 @@ for (n_nodes in network_sizes) {
               ci_lower, ci_upper))
 
   if (type1_error_rate >= ci_lower && type1_error_rate <= ci_upper) {
-    cat("✓ Type I error rate is within expected range\n\n")
+    cat("Type I error rate is within expected range\n\n")
   } else {
-    cat("✗ WARNING: Type I error rate is outside expected range!\n\n")
+    cat("WARNING: Type I error rate is outside expected range!\n\n")
   }
 
   # P-value distribution statistics
@@ -416,9 +416,9 @@ for (n_nodes in network_sizes) {
   cat("Kolmogorov-Smirnov test for uniformity:\n")
   cat(sprintf("  D = %.4f, p-value = %.4f\n", ks_test$statistic, ks_test$p.value))
   if (ks_test$p.value > 0.05) {
-    cat("  ✓ P-values are consistent with uniform distribution\n\n")
+    cat("  P-values are consistent with uniform distribution\n\n")
   } else {
-    cat("  ✗ P-values deviate from uniform distribution\n\n")
+    cat("  P-values deviate from uniform distribution\n\n")
   }
 
   # Actual correlation between X and Y (should be near 0)
@@ -510,9 +510,9 @@ for (n_nodes in network_sizes) {
 ################################################################################
 
 cat("\n")
-cat("="*80, "\n", sep="")
+cat(paste(rep("=", 80), collapse=""), "\n", sep="")
 cat("SUMMARY ACROSS ALL NETWORK SIZES\n")
-cat("="*80, "\n\n", sep="")
+cat(paste(rep("=", 80), collapse=""), "\n\n", sep="")
 
 summary_df <- data.frame(
   n = network_sizes,
@@ -530,19 +530,19 @@ cat("-----------\n")
 all_within_ci <- all(abs(summary_df$Type_I_Error - 0.05) < 0.015)
 
 if (all_within_ci) {
-  cat("✓ QAP correlation successfully controls Type I error rate at α=0.05\n")
+  cat("QAP correlation successfully controls Type I error rate at α=0.05\n")
   cat("  even when networks exhibit reciprocity and transitivity.\n\n")
 } else {
-  cat("✗ WARNING: QAP correlation shows inflated or deflated Type I error\n")
+  cat("WARNING: QAP correlation shows inflated or deflated Type I error\n")
   cat("  when networks have autocorrelation structure.\n\n")
 }
 
 cat(sprintf("Total runtime: %.1f minutes\n", sum(summary_df$Runtime_sec)/60))
 
 cat("\n")
-cat("="*80, "\n", sep="")
+cat(paste(rep("=", 80), collapse=""), "\n", sep="")
 cat("SIMULATION COMPLETE\n")
-cat("="*80, "\n\n", sep="")
+cat(paste(rep("=", 80), collapse=""), "\n\n", sep="")
 
 ################################################################################
 # END
