@@ -1,6 +1,6 @@
 Package: borgworld
 Title: Easy, Nicer-Output Stats Helpers
-Version: 0.12.0
+Version: 0.13.0
 Authors@R: 
     person("Steve", "Borgatti", email = "sborgatti@uky.edu", role = c("aut","cre"))
 Description: Small, prefix-based helpers (b*) that provide simpler syntax
