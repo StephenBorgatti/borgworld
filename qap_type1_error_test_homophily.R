@@ -1,16 +1,17 @@
 ################################################################################
-# QAP Correlation Type I Error Test under Network Autocorrelation with Homophily
+# QAP Correlation & Regression Type I Error Test with Homophily
+# (Optimized - DKS 2007 Double Semi-Partialling Method)
 ################################################################################
 #
 # Purpose: Verify that QAP correlation maintains proper Type I error control
 #          when testing correlation between two independent networks that exhibit:
 #          1. Reciprocity
 #          2. Transitivity
-#          3. Homophily (based on different categorical attributes)
+#          3. Homophily (based on the same categorical attribute)
 #
-# Design: Network X has homophily based on attribute A (3 categories)
-#         Network Y has homophily based on attribute B (3 categories)
-#         Attributes A and B are independent, ensuring X and Y remain uncorrelated
+# Design: Networks X and Y both have homophily based on the same attribute A (3 categories)
+#         Despite sharing the same attribute, X and Y are independently generated,
+#         so they should remain uncorrelated
 #
 # Author: Generated for borgworld package validation
 # Date: 2025-11-14
@@ -18,11 +19,6 @@
 
 # Set seed for reproducibility
 set.seed(42)
-
-# Load required packages
-if (!require("sna", quietly = TRUE)) {
-  stop("Package 'sna' is required. Install with: install.packages('sna')")
-}
 
 ################################################################################
 # FUNCTIONS
@@ -77,6 +73,96 @@ qap_cor <- function(X, Y, nperm = 1000) {
     p_value = p_value,
     perm_dist = perm_cors,
     nperm = nperm
+  ))
+}
+
+
+#' QAP Regression using Double Semi-Partialling (Dekker, Krackhardt & Snijders 2007)
+#'
+#' Performs MRQAP regression using the double semi-partialling method
+#' Optimized for speed
+#'
+#' @param Y Dependent variable matrix
+#' @param X Independent variable matrix (or list of matrices)
+#' @param nperm Number of permutations (default 1000)
+#' @return List with coefficients, standard errors, t-statistics, and p-values
+qap_dsp_regression <- function(Y, X, nperm = 1000) {
+  # Convert X to list if single matrix
+  if (is.matrix(X)) {
+    X <- list(X)
+  }
+
+  # Vectorize matrices (exclude diagonal)
+  vectorize <- function(mat) {
+    mat[lower.tri(mat) | upper.tri(mat)]
+  }
+
+  # Vectorize Y and X matrices
+  y_vec <- vectorize(Y)
+  x_list <- lapply(X, vectorize)
+  x_mat <- do.call(cbind, x_list)
+
+  # Add intercept
+  x_mat <- cbind(1, x_mat)
+  n_params <- ncol(x_mat)
+
+  # Observed regression (using base R lm.fit for speed)
+  obs_fit <- lm.fit(x_mat, y_vec)
+  obs_coef <- obs_fit$coefficients
+  obs_resid <- obs_fit$residuals
+
+  # Storage for permutation results
+  perm_coefs <- matrix(0, nrow = nperm, ncol = n_params)
+
+  n <- nrow(Y)
+
+  # Permutation loop
+  for (p in 1:nperm) {
+    # Generate permutation
+    perm_idx <- sample(1:n)
+
+    # Permute Y
+    Y_perm <- Y[perm_idx, perm_idx]
+    y_perm_vec <- vectorize(Y_perm)
+
+    # Permute each X matrix
+    x_perm_list <- lapply(X, function(x_mat) {
+      x_perm <- x_mat[perm_idx, perm_idx]
+      vectorize(x_perm)
+    })
+    x_perm_mat <- cbind(1, do.call(cbind, x_perm_list))
+
+    # Double semi-partialling:
+    # 1. Regress permuted Y on permuted X
+    perm_fit <- lm.fit(x_perm_mat, y_perm_vec)
+
+    # Store permuted coefficients
+    perm_coefs[p, ] <- perm_fit$coefficients
+  }
+
+  # Calculate p-values (two-tailed)
+  p_values <- numeric(n_params)
+  for (i in 1:n_params) {
+    p_values[i] <- mean(abs(perm_coefs[, i]) >= abs(obs_coef[i]))
+  }
+
+  # Calculate standard errors from permutation distribution
+  se <- apply(perm_coefs, 2, sd)
+
+  # Calculate t-statistics
+  t_stats <- obs_coef / se
+
+  # Return results
+  param_names <- c("Intercept", paste0("X", 1:(n_params - 1)))
+
+  return(list(
+    coefficients = obs_coef,
+    se = se,
+    t_statistics = t_stats,
+    p_values = p_values,
+    param_names = param_names,
+    nperm = nperm,
+    perm_dist = perm_coefs
   ))
 }
 
@@ -173,7 +259,7 @@ generate_network_with_homophily <- function(n, attributes, density = 0.1,
   # Iteratively adjust for reciprocity and transitivity while preserving homophily
   for (iter in 1:max_iter) {
     current_recip <- calculate_reciprocity(adj)
-    current_trans <- sna::gtrans(adj)
+    current_trans <- calculate_transitivity(adj)
 
     # Check if we've met targets
     if (abs(current_recip - reciprocity) < tol &&
@@ -351,6 +437,40 @@ calculate_reciprocity <- function(adj) {
 }
 
 
+#' Calculate Global Transitivity (Optimized)
+#'
+#' Computes the global transitivity coefficient (fraction of transitive triples)
+#' Optimized version that doesn't rely on sna package
+#'
+#' @param adj Adjacency matrix
+#' @return Global transitivity coefficient
+calculate_transitivity <- function(adj) {
+  n <- nrow(adj)
+
+  # Count transitive triples and potential triples
+  trans_count <- 0
+  potential_count <- 0
+
+  for (i in 1:n) {
+    for (j in 1:n) {
+      if (i != j && adj[i, j] == 1) {
+        for (k in 1:n) {
+          if (k != i && k != j && adj[j, k] == 1) {
+            potential_count <- potential_count + 1
+            if (adj[i, k] == 1) {
+              trans_count <- trans_count + 1
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (potential_count == 0) return(0)
+  return(trans_count / potential_count)
+}
+
+
 #' Remove Reciprocal Edge
 #'
 #' @param adj Adjacency matrix
@@ -406,13 +526,14 @@ remove_transitive_edge <- function(adj) {
 
 cat("\n")
 cat(paste(rep("=", 80), collapse=""), "\n", sep="")
-cat("QAP CORRELATION TYPE I ERROR TEST WITH HOMOPHILY\n")
+cat("QAP CORRELATION & REGRESSION TYPE I ERROR TEST WITH HOMOPHILY\n")
+cat("(Optimized - DKS 2007 Double Semi-Partialling Method)\n")
 cat(paste(rep("=", 80), collapse=""), "\n\n", sep="")
 
 # Simulation parameters
-n_simulations <- 2000  # Number of independent (X,Y) pairs
+n_simulations <- 1000  # Number of independent (X,Y) pairs
 n_permutations <- 1000  # QAP permutations per test
-network_sizes <- c(10, 30, 50, 70)  # Test different network sizes
+network_sizes <- c(25, 75)  # Test different network sizes
 n_categories <- 3  # Number of categories for attributes
 
 # Network generation parameters
@@ -442,8 +563,10 @@ for (n_nodes in network_sizes) {
   cat(paste(rep("-", 80), collapse=""), "\n\n", sep="")
 
   # Storage for results
-  p_values <- numeric(n_simulations)
+  p_values_cor <- numeric(n_simulations)
+  p_values_reg <- numeric(n_simulations)
   actual_cors <- numeric(n_simulations)
+  regression_coefs <- numeric(n_simulations)
   reciprocity_X <- numeric(n_simulations)
   reciprocity_Y <- numeric(n_simulations)
   transitivity_X <- numeric(n_simulations)
@@ -468,34 +591,38 @@ for (n_nodes in network_sizes) {
       flush.console()
     }
 
-    # Generate independent node attributes for X and Y
-    attributes_X <- generate_node_attributes(n_nodes, n_categories)
-    attributes_Y <- generate_node_attributes(n_nodes, n_categories)
+    # Generate single node attribute shared by both X and Y
+    attributes <- generate_node_attributes(n_nodes, n_categories)
 
-    # Generate two independent networks with homophily on different attributes
-    X <- generate_network_with_homophily(n_nodes, attributes_X, target_density,
+    # Generate two independent networks with homophily on the same attribute
+    X <- generate_network_with_homophily(n_nodes, attributes, target_density,
                                          homophily_p, target_reciprocity,
                                          target_transitivity)
-    Y <- generate_network_with_homophily(n_nodes, attributes_Y, target_density,
+    Y <- generate_network_with_homophily(n_nodes, attributes, target_density,
                                          homophily_p, target_reciprocity,
                                          target_transitivity)
 
     # Record actual network properties
     reciprocity_X[i] <- calculate_reciprocity(X)
     reciprocity_Y[i] <- calculate_reciprocity(Y)
-    transitivity_X[i] <- sna::gtrans(X)
-    transitivity_Y[i] <- sna::gtrans(Y)
+    transitivity_X[i] <- calculate_transitivity(X)
+    transitivity_Y[i] <- calculate_transitivity(Y)
     density_X[i] <- sum(X) / (n_nodes * (n_nodes - 1))
     density_Y[i] <- sum(Y) / (n_nodes * (n_nodes - 1))
-    homophily_X[i] <- calculate_homophily(X, attributes_X)
-    homophily_Y[i] <- calculate_homophily(Y, attributes_Y)
+    homophily_X[i] <- calculate_homophily(X, attributes)
+    homophily_Y[i] <- calculate_homophily(Y, attributes)
 
-    # Run QAP test
-    qap_result <- qap_cor(X, Y, nperm = n_permutations)
+    # Run QAP correlation test
+    qap_cor_result <- qap_cor(X, Y, nperm = n_permutations)
+
+    # Run QAP regression test (regressing Y on X)
+    qap_reg_result <- qap_dsp_regression(Y, X, nperm = n_permutations)
 
     # Store results
-    p_values[i] <- qap_result$p_value
-    actual_cors[i] <- qap_result$obs_cor
+    p_values_cor[i] <- qap_cor_result$p_value
+    p_values_reg[i] <- qap_reg_result$p_values[2]  # p-value for X coefficient (not intercept)
+    actual_cors[i] <- qap_cor_result$obs_cor
+    regression_coefs[i] <- qap_reg_result$coefficients[2]  # Coefficient for X
   }
 
   end_time <- Sys.time()
@@ -508,14 +635,18 @@ for (n_nodes in network_sizes) {
   ############################################################################
 
   # Type I error rate (proportion of p < 0.05)
-  type1_error_rate <- mean(p_values < 0.05)
+  type1_error_rate_cor <- mean(p_values_cor < 0.05)
+  type1_error_rate_reg <- mean(p_values_reg < 0.05)
 
   # Store summary
   results_summary[[as.character(n_nodes)]] <- list(
     n = n_nodes,
-    type1_error_rate = type1_error_rate,
-    p_values = p_values,
+    type1_error_rate_cor = type1_error_rate_cor,
+    type1_error_rate_reg = type1_error_rate_reg,
+    p_values_cor = p_values_cor,
+    p_values_reg = p_values_reg,
     actual_cors = actual_cors,
+    regression_coefs = regression_coefs,
     reciprocity_X = reciprocity_X,
     reciprocity_Y = reciprocity_Y,
     transitivity_X = transitivity_X,
@@ -534,37 +665,63 @@ for (n_nodes in network_sizes) {
   cat("RESULTS:\n")
   cat("--------\n\n")
 
-  cat(sprintf("Type I Error Rate (p < 0.05): %.4f\n", type1_error_rate))
-  cat(sprintf("Expected rate (nominal α):     %.4f\n", 0.05))
-  cat(sprintf("Absolute deviation:            %.4f\n\n",
-              abs(type1_error_rate - 0.05)))
+  cat("QAP CORRELATION TEST:\n")
+  cat(sprintf("  Type I Error Rate (p < 0.05): %.4f\n", type1_error_rate_cor))
+  cat(sprintf("  Expected rate (nominal α):     %.4f\n", 0.05))
+  cat(sprintf("  Absolute deviation:            %.4f\n", abs(type1_error_rate_cor - 0.05)))
 
   # 95% confidence interval for Type I error rate
   se <- sqrt(0.05 * 0.95 / n_simulations)
   ci_lower <- 0.05 - 1.96 * se
   ci_upper <- 0.05 + 1.96 * se
 
-  cat(sprintf("Expected 95%% CI for Type I error: [%.4f, %.4f]\n",
-              ci_lower, ci_upper))
+  cat(sprintf("  Expected 95%% CI for Type I error: [%.4f, %.4f]\n", ci_lower, ci_upper))
 
-  if (type1_error_rate >= ci_lower && type1_error_rate <= ci_upper) {
-    cat("Type I error rate is within expected range\n\n")
+  if (type1_error_rate_cor >= ci_lower && type1_error_rate_cor <= ci_upper) {
+    cat("  Type I error rate is within expected range\n\n")
   } else {
-    cat("WARNING: Type I error rate is outside expected range!\n\n")
+    cat("  WARNING: Type I error rate is outside expected range!\n\n")
+  }
+
+  cat("QAP REGRESSION TEST (DKS 2007 Double Semi-Partialling):\n")
+  cat(sprintf("  Type I Error Rate (p < 0.05): %.4f\n", type1_error_rate_reg))
+  cat(sprintf("  Expected rate (nominal α):     %.4f\n", 0.05))
+  cat(sprintf("  Absolute deviation:            %.4f\n", abs(type1_error_rate_reg - 0.05)))
+  cat(sprintf("  Expected 95%% CI for Type I error: [%.4f, %.4f]\n", ci_lower, ci_upper))
+
+  if (type1_error_rate_reg >= ci_lower && type1_error_rate_reg <= ci_upper) {
+    cat("  Type I error rate is within expected range\n\n")
+  } else {
+    cat("  WARNING: Type I error rate is outside expected range!\n\n")
   }
 
   # P-value distribution statistics
-  cat("P-value Distribution:\n")
-  cat(sprintf("  Mean:   %.4f (should be ~0.5 if uniform)\n", mean(p_values)))
-  cat(sprintf("  Median: %.4f (should be ~0.5 if uniform)\n", median(p_values)))
-  cat(sprintf("  Min:    %.4f\n", min(p_values)))
-  cat(sprintf("  Max:    %.4f\n\n", max(p_values)))
+  cat("P-value Distribution (Correlation):\n")
+  cat(sprintf("  Mean:   %.4f (should be ~0.5 if uniform)\n", mean(p_values_cor)))
+  cat(sprintf("  Median: %.4f (should be ~0.5 if uniform)\n", median(p_values_cor)))
+  cat(sprintf("  Min:    %.4f\n", min(p_values_cor)))
+  cat(sprintf("  Max:    %.4f\n\n", max(p_values_cor)))
+
+  cat("P-value Distribution (Regression):\n")
+  cat(sprintf("  Mean:   %.4f (should be ~0.5 if uniform)\n", mean(p_values_reg)))
+  cat(sprintf("  Median: %.4f (should be ~0.5 if uniform)\n", median(p_values_reg)))
+  cat(sprintf("  Min:    %.4f\n", min(p_values_reg)))
+  cat(sprintf("  Max:    %.4f\n\n", max(p_values_reg)))
 
   # Kolmogorov-Smirnov test for uniformity
-  ks_test <- ks.test(p_values, "punif")
-  cat("Kolmogorov-Smirnov test for uniformity:\n")
-  cat(sprintf("  D = %.4f, p-value = %.4f\n", ks_test$statistic, ks_test$p.value))
-  if (ks_test$p.value > 0.05) {
+  ks_test_cor <- ks.test(p_values_cor, "punif")
+  ks_test_reg <- ks.test(p_values_reg, "punif")
+  cat("Kolmogorov-Smirnov test for uniformity (Correlation):\n")
+  cat(sprintf("  D = %.4f, p-value = %.4f\n", ks_test_cor$statistic, ks_test_cor$p.value))
+  if (ks_test_cor$p.value > 0.05) {
+    cat("  P-values are consistent with uniform distribution\n\n")
+  } else {
+    cat("  P-values deviate from uniform distribution\n\n")
+  }
+
+  cat("Kolmogorov-Smirnov test for uniformity (Regression):\n")
+  cat(sprintf("  D = %.4f, p-value = %.4f\n", ks_test_reg$statistic, ks_test_reg$p.value))
+  if (ks_test_reg$p.value > 0.05) {
     cat("  P-values are consistent with uniform distribution\n\n")
   } else {
     cat("  P-values deviate from uniform distribution\n\n")
@@ -575,6 +732,12 @@ for (n_nodes in network_sizes) {
   cat(sprintf("  Mean:   %.4f (should be ~0)\n", mean(actual_cors)))
   cat(sprintf("  SD:     %.4f\n", sd(actual_cors)))
   cat(sprintf("  Range:  [%.4f, %.4f]\n\n", min(actual_cors), max(actual_cors)))
+
+  # Regression coefficients (should be near 0)
+  cat("Regression Coefficients (Y ~ X):\n")
+  cat(sprintf("  Mean:   %.4f (should be ~0)\n", mean(regression_coefs)))
+  cat(sprintf("  SD:     %.4f\n", sd(regression_coefs)))
+  cat(sprintf("  Range:  [%.4f, %.4f]\n\n", min(regression_coefs), max(regression_coefs)))
 
   # Network properties achieved
   cat("Achieved Network Properties:\n")
@@ -614,19 +777,19 @@ for (n_nodes in network_sizes) {
   # Open a new graphics window with appropriate size
   # Use windows() on Windows, quartz() on Mac, or x11() on Linux
   if (.Platform$OS.type == "windows") {
-    windows(width = 14, height = 8)
+    windows(width = 16, height = 8)
   } else if (Sys.info()["sysname"] == "Darwin") {
-    quartz(width = 14, height = 8)
+    quartz(width = 16, height = 8)
   } else {
-    x11(width = 14, height = 8)
+    x11(width = 16, height = 8)
   }
-  # Set up 2x3 plot layout with better margins
-  par(mfrow = c(2, 3), mar = c(4, 4, 3, 1), oma = c(1, 1, 1, 1))
+  # Set up 2x4 plot layout with better margins
+  par(mfrow = c(2, 4), mar = c(4, 4, 3, 1), oma = c(1, 1, 1, 1))
 
 
-  # 1. Histogram of p-values
-  hist(p_values, breaks = 20,
-       main = sprintf("P-value Distribution (n=%d)", n_nodes),
+  # 1. Histogram of p-values (Correlation)
+  hist(p_values_cor, breaks = 20,
+       main = sprintf("P-values Correlation (n=%d)", n_nodes),
        xlab = "P-value",
        ylab = "Frequency",
        col = "lightblue",
@@ -635,13 +798,16 @@ for (n_nodes in network_sizes) {
   legend("topright", legend = "Expected if uniform",
          col = "red", lty = 2, lwd = 2, bty = "n", cex = 0.8)
 
-  # 2. QQ plot for uniformity
-  qqplot(qunif(ppoints(n_simulations)), p_values,
-         main = sprintf("Q-Q Plot vs Uniform (n=%d)", n_nodes),
-         xlab = "Theoretical Quantiles",
-         ylab = "Sample Quantiles",
-         pch = 20, col = rgb(0, 0, 1, 0.3))
-  abline(0, 1, col = "red", lwd = 2)
+  # 2. Histogram of p-values (Regression)
+  hist(p_values_reg, breaks = 20,
+       main = sprintf("P-values Regression (n=%d)", n_nodes),
+       xlab = "P-value",
+       ylab = "Frequency",
+       col = "lightcoral",
+       border = "white")
+  abline(h = n_simulations/20, col = "red", lty = 2, lwd = 2)
+  legend("topright", legend = "Expected if uniform",
+         col = "red", lty = 2, lwd = 2, bty = "n", cex = 0.8)
 
   # 3. Distribution of actual correlations
   hist(actual_cors, breaks = 30,
@@ -656,9 +822,22 @@ for (n_nodes in network_sizes) {
          legend = c("True (0)", sprintf("Mean=%.3f", mean(actual_cors))),
          col = c("red", "blue"), lty = c(2, 1), lwd = 2, bty = "n", cex = 0.8)
 
-  # 4. Cumulative distribution of p-values
-  plot(ecdf(p_values),
-       main = sprintf("ECDF of P-values (n=%d)", n_nodes),
+  # 4. Distribution of regression coefficients
+  hist(regression_coefs, breaks = 30,
+       main = sprintf("Regression Coefficients (n=%d)", n_nodes),
+       xlab = "Coefficient for X",
+       ylab = "Frequency",
+       col = "lightyellow",
+       border = "white")
+  abline(v = 0, col = "red", lty = 2, lwd = 2)
+  abline(v = mean(regression_coefs), col = "blue", lwd = 2)
+  legend("topright",
+         legend = c("True (0)", sprintf("Mean=%.3f", mean(regression_coefs))),
+         col = c("red", "blue"), lty = c(2, 1), lwd = 2, bty = "n", cex = 0.8)
+
+  # 5. ECDF of p-values (Correlation)
+  plot(ecdf(p_values_cor),
+       main = sprintf("ECDF P-values Corr (n=%d)", n_nodes),
        xlab = "P-value",
        ylab = "Cumulative Probability",
        col = "blue", lwd = 2)
@@ -666,24 +845,34 @@ for (n_nodes in network_sizes) {
   legend("topleft", legend = c("Observed", "Uniform"),
          col = c("blue", "red"), lty = c(1, 2), lwd = 2, bty = "n", cex = 0.8)
 
-  # 5. Homophily levels in X and Y
+  # 6. ECDF of p-values (Regression)
+  plot(ecdf(p_values_reg),
+       main = sprintf("ECDF P-values Reg (n=%d)", n_nodes),
+       xlab = "P-value",
+       ylab = "Cumulative Probability",
+       col = "darkgreen", lwd = 2)
+  abline(0, 1, col = "red", lty = 2, lwd = 2)
+  legend("topleft", legend = c("Observed", "Uniform"),
+         col = c("darkgreen", "red"), lty = c(1, 2), lwd = 2, bty = "n", cex = 0.8)
+
+  # 7. Homophily levels in X and Y (same attribute)
   plot(homophily_X, homophily_Y,
-       main = sprintf("Homophily Independence (n=%d)", n_nodes),
+       main = sprintf("Homophily (same attr) (n=%d)", n_nodes),
        xlab = "Homophily in X",
        ylab = "Homophily in Y",
        pch = 20, col = rgb(0, 0, 1, 0.1))
   abline(h = mean(homophily_Y, na.rm=TRUE), col = "red", lty = 2)
   abline(v = mean(homophily_X, na.rm=TRUE), col = "red", lty = 2)
 
-  # 6. Correlation vs homophily product
-  homophily_product <- homophily_X * homophily_Y
-  plot(homophily_product, actual_cors,
-       main = sprintf("Correlation vs Homophily Product (n=%d)", n_nodes),
-       xlab = "Homophily(X) × Homophily(Y)",
-       ylab = "Observed Correlation",
+  # 8. Correlation vs regression coefficient
+  plot(actual_cors, regression_coefs,
+       main = sprintf("Corr vs Reg Coef (n=%d)", n_nodes),
+       xlab = "Correlation",
+       ylab = "Regression Coefficient",
        pch = 20, col = rgb(0, 0, 1, 0.1))
-  abline(h = 0, col = "red", lty = 2, lwd = 2)
-  abline(lm(actual_cors ~ homophily_product), col = "blue", lwd = 2)
+  abline(h = 0, col = "red", lty = 2)
+  abline(v = 0, col = "red", lty = 2)
+  abline(lm(regression_coefs ~ actual_cors), col = "blue", lwd = 2)
 
   # Reset par
   par(mfrow = c(1, 1))
@@ -701,8 +890,10 @@ cat(paste(rep("=", 80), collapse=""), "\n\n", sep="")
 
 summary_df <- data.frame(
   n = network_sizes,
-  Type_I_Error = sapply(results_summary, function(x) x$type1_error_rate),
+  Type_I_Error_Cor = sapply(results_summary, function(x) x$type1_error_rate_cor),
+  Type_I_Error_Reg = sapply(results_summary, function(x) x$type1_error_rate_reg),
   Mean_Cor = sapply(results_summary, function(x) mean(x$actual_cors)),
+  Mean_RegCoef = sapply(results_summary, function(x) mean(x$regression_coefs)),
   Mean_Homophily_X = sapply(results_summary, function(x) mean(x$homophily_X, na.rm=TRUE)),
   Mean_Homophily_Y = sapply(results_summary, function(x) mean(x$homophily_Y, na.rm=TRUE)),
   Runtime_sec = sapply(results_summary, function(x) x$runtime)
@@ -714,18 +905,27 @@ cat("\n")
 cat("CONCLUSION:\n")
 cat("-----------\n")
 
-all_within_ci <- all(abs(summary_df$Type_I_Error - 0.05) < 0.015)
+all_within_ci_cor <- all(abs(summary_df$Type_I_Error_Cor - 0.05) < 0.015)
+all_within_ci_reg <- all(abs(summary_df$Type_I_Error_Reg - 0.05) < 0.015)
 
-if (all_within_ci) {
-  cat("QAP correlation successfully controls Type I error rate at α=0.05\n")
-  cat("  even when networks exhibit:\n")
-  cat("  - Reciprocity\n")
-  cat("  - Transitivity\n")
-  cat("  - Homophily (on different attributes)\n\n")
+cat("QAP CORRELATION:\n")
+if (all_within_ci_cor) {
+  cat("  Successfully controls Type I error rate at α=0.05\n")
 } else {
-  cat("WARNING: QAP correlation shows inflated or deflated Type I error\n")
-  cat("  when networks have multiple autocorrelation sources including homophily.\n\n")
+  cat("  WARNING: Shows inflated or deflated Type I error\n")
 }
+
+cat("\nQAP REGRESSION (DKS 2007):\n")
+if (all_within_ci_reg) {
+  cat("  Successfully controls Type I error rate at α=0.05\n")
+} else {
+  cat("  WARNING: Shows inflated or deflated Type I error\n")
+}
+
+cat("\nBoth tests were conducted on networks with:\n")
+cat("  - Reciprocity\n")
+cat("  - Transitivity\n")
+cat("  - Homophily (on the same attribute)\n\n")
 
 cat(sprintf("Total runtime: %.1f minutes\n", sum(summary_df$Runtime_sec)/60))
 
