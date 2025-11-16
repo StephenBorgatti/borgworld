@@ -426,7 +426,7 @@ for (n_nodes in network_sizes) {
                         "run_single_simulation", "n_permutations",
                         "target_density", "target_reciprocity",
                         "target_transitivity", "target_homophily",
-                        "n_categories"))
+                        "n_categories", "n_nodes"))
 
     # Load sna in each worker
     clusterEvalQ(cl, library(sna))
