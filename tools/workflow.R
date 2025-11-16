@@ -44,3 +44,12 @@ devtools::document()   # Regenerate documentation
 devtools::install()    # Reinstall the package
 devtools::load_all()   # Load it again
 
+#when claude code pushes something to github
+
+# fetch changes
+system("git fetch origin")
+#merge changes from git branch learned from system()
+system("git merge origin/claude/<branch>")
+
+#push back after edits
+system("git push origin main")

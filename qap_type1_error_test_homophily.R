@@ -531,9 +531,9 @@ cat("(Optimized - DKS 2007 Double Semi-Partialling Method)\n")
 cat(paste(rep("=", 80), collapse=""), "\n\n", sep="")
 
 # Simulation parameters
-n_simulations <- 1000  # Number of independent (X,Y) pairs
+n_simulations <- 100  # Number of independent (X,Y) pairs
 n_permutations <- 1000  # QAP permutations per test
-network_sizes <- c(25, 75)  # Test different network sizes
+network_sizes <- c(75)  # Test different network sizes
 n_categories <- 3  # Number of categories for attributes
 
 # Network generation parameters

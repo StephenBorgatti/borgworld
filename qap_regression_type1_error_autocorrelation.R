@@ -438,7 +438,7 @@ cat(paste(rep("=", 80), collapse=""), "\n\n", sep="")
 # Simulation parameters
 n_simulations <- 2000  # Number of independent (X,Y) pairs
 n_permutations <- 1000  # QAP permutations per test
-network_sizes <- c(10, 30, 50)  # Test different network sizes
+network_sizes <- c(25, 50, 75)  # Test different network sizes
 
 # Network generation parameters
 target_density <- 0.15
