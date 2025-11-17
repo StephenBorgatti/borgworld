@@ -27,6 +27,7 @@ set.seed(42)
 #' QAP Regression using Double Semi-Partialling (Dekker, Krackhardt & Snijders 2007)
 #'
 #' Performs MRQAP regression using the double semi-partialling method
+#' Each variable (Y and each X) is permuted INDEPENDENTLY on each iteration
 #' Optimized for speed
 #'
 #' @param Y Dependent variable matrix
@@ -62,25 +63,25 @@ qap_dsp_regression <- function(Y, X, nperm = 1000) {
   perm_coefs <- matrix(0, nrow = nperm, ncol = n_params)
 
   n <- nrow(Y)
+  n_x_vars <- length(X)
 
-  # Permutation loop
+  # Permutation loop - DKS 2007 double semi-partialling
+  # Key: Each variable gets its OWN independent permutation
   for (p in 1:nperm) {
-    # Generate permutation
-    perm_idx <- sample(1:n)
-
-    # Permute Y
-    Y_perm <- Y[perm_idx, perm_idx]
+    # Generate INDEPENDENT permutation for Y
+    perm_idx_Y <- sample(1:n)
+    Y_perm <- Y[perm_idx_Y, perm_idx_Y]
     y_perm_vec <- vectorize(Y_perm)
 
-    # Permute each X matrix
+    # Generate INDEPENDENT permutation for each X variable
     x_perm_list <- lapply(X, function(x_mat) {
-      x_perm <- x_mat[perm_idx, perm_idx]
+      perm_idx_X <- sample(1:n)  # Different permutation for each X!
+      x_perm <- x_mat[perm_idx_X, perm_idx_X]
       vectorize(x_perm)
     })
     x_perm_mat <- cbind(1, do.call(cbind, x_perm_list))
 
-    # Double semi-partialling:
-    # 1. Regress permuted Y on permuted X
+    # Regress independently permuted Y on independently permuted X variables
     perm_fit <- lm.fit(x_perm_mat, y_perm_vec)
 
     # Store permuted coefficients
