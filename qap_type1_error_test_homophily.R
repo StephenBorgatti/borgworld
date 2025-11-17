@@ -75,6 +75,13 @@ qap_dsp_regression <- function(Y, X, nperm = 1000) {
   p_values[1] <- NA
   se[1] <- NA
 
+  # Helper function to convert vector back to matrix
+  vec_to_matrix <- function(vec, n) {
+    mat <- matrix(0, n, n)
+    mat[lower.tri(mat) | upper.tri(mat)] <- vec
+    return(mat)
+  }
+
   # DKS 2007 Double Semi-Partialling:
   # For EACH coefficient (except intercept), run separate permutation test
   for (var_idx in 1:n_x_vars) {
@@ -89,28 +96,34 @@ qap_dsp_regression <- function(Y, X, nperm = 1000) {
     }
 
     # Step 1: Regress focal X variable on all other X variables
-    # X_focal = δ * X_others + residuals
+    # X_focal = δ * X_others + residuals (vectorized)
     focal_x_vec <- x_mat[, var_idx]
     resid_fit <- lm.fit(other_x_mat_full, focal_x_vec)
-    focal_x_resid <- resid_fit$residuals  # These are X̂_Z from the paper
+    focal_x_resid_vec <- resid_fit$residuals  # Vectorized residuals
+
+    # Step 2: Convert residuals back to matrix form
+    focal_x_resid_mat <- vec_to_matrix(focal_x_resid_vec, n)
 
     # Storage for permuted coefficients
     perm_coefs <- numeric(nperm)
 
-    # Step 2: Permutation loop
+    # Step 3: Permutation loop
     for (p in 1:nperm) {
-      # Generate random permutation
+      # Generate random NODE permutation
       perm_idx <- sample(1:n)
 
-      # Permute the RESIDUALS (not the original X!)
-      focal_x_resid_perm <- focal_x_resid[perm_idx]
+      # Permute the RESIDUAL MATRIX (rows and columns simultaneously)
+      focal_x_resid_perm_mat <- focal_x_resid_mat[perm_idx, perm_idx]
 
-      # Step 3: Regress Y on permuted residuals + other X variables
+      # Vectorize the permuted residual matrix
+      focal_x_resid_perm_vec <- vectorize(focal_x_resid_perm_mat)
+
+      # Step 4: Regress Y on permuted residuals + other X variables
       # Y = β * π(X̂_focal) + γ * X_others + E
       if (n_x_vars > 1) {
-        perm_x_mat <- cbind(1, focal_x_resid_perm, other_x_mat)
+        perm_x_mat <- cbind(1, focal_x_resid_perm_vec, other_x_mat)
       } else {
-        perm_x_mat <- cbind(1, focal_x_resid_perm)
+        perm_x_mat <- cbind(1, focal_x_resid_perm_vec)
       }
 
       perm_fit <- lm.fit(perm_x_mat, y_vec)
