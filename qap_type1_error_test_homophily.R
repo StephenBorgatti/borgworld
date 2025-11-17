@@ -498,9 +498,8 @@ cat(paste(rep("=", 80), collapse=""), "\n", sep="")
 cat("QAP REGRESSION TYPE I ERROR TEST WITH HOMOPHILY\n")
 cat("(Optimized - DKS 2007 Double Semi-Partialling Method)\n")
 cat(paste(rep("=", 80), collapse=""), "\n\n", sep="")
-
 # Simulation parameters
-n_simulations <- 100  # Number of independent (X,Y) pairs
+n_simulations <- 200  # Number of independent (X,Y) pairs
 n_permutations <- 1000  # QAP permutations per test
 network_sizes <- c(75)  # Test different network sizes
 n_categories <- 3  # Number of categories for attributes
