@@ -26,9 +26,10 @@ set.seed(42)
 
 #' QAP Regression using Double Semi-Partialling (Dekker, Krackhardt & Snijders 2007)
 #'
-#' Performs MRQAP regression using the double semi-partialling method
-#' Each variable (Y and each X) is permuted INDEPENDENTLY on each iteration
-#' Optimized for speed
+#' Performs MRQAP regression using the double semi-partialling method.
+#' For each coefficient, the focal variable is regressed on all other variables,
+#' residuals are extracted, permuted, and used in the test regression.
+#' Optimized for speed.
 #'
 #' @param Y Dependent variable matrix
 #' @param X Independent variable matrix (or list of matrices)
@@ -45,63 +46,92 @@ qap_dsp_regression <- function(Y, X, nperm = 1000) {
     mat[lower.tri(mat) | upper.tri(mat)]
   }
 
+  # Permute matrix by rows and columns
+  permute_matrix <- function(mat, perm_idx) {
+    mat[perm_idx, perm_idx]
+  }
+
   # Vectorize Y and X matrices
   y_vec <- vectorize(Y)
   x_list <- lapply(X, vectorize)
   x_mat <- do.call(cbind, x_list)
 
   # Add intercept
-  x_mat <- cbind(1, x_mat)
-  n_params <- ncol(x_mat)
-
-  # Observed regression (using base R lm.fit for speed)
-  obs_fit <- lm.fit(x_mat, y_vec)
-  obs_coef <- obs_fit$coefficients
-  obs_resid <- obs_fit$residuals
-
-  # Storage for permutation results
-  perm_coefs <- matrix(0, nrow = nperm, ncol = n_params)
-
-  n <- nrow(Y)
+  x_mat_full <- cbind(1, x_mat)
+  n_params <- ncol(x_mat_full)
   n_x_vars <- length(X)
 
-  # Permutation loop - DKS 2007 double semi-partialling
-  # Key: Each variable gets its OWN independent permutation
-  for (p in 1:nperm) {
-    # Generate INDEPENDENT permutation for Y
-    perm_idx_Y <- sample(1:n)
-    Y_perm <- Y[perm_idx_Y, perm_idx_Y]
-    y_perm_vec <- vectorize(Y_perm)
+  # Observed regression (using base R lm.fit for speed)
+  obs_fit <- lm.fit(x_mat_full, y_vec)
+  obs_coef <- obs_fit$coefficients
 
-    # Generate INDEPENDENT permutation for each X variable
-    x_perm_list <- lapply(X, function(x_mat) {
-      perm_idx_X <- sample(1:n)  # Different permutation for each X!
-      x_perm <- x_mat[perm_idx_X, perm_idx_X]
-      vectorize(x_perm)
-    })
-    x_perm_mat <- cbind(1, do.call(cbind, x_perm_list))
-
-    # Regress independently permuted Y on independently permuted X variables
-    perm_fit <- lm.fit(x_perm_mat, y_perm_vec)
-
-    # Store permuted coefficients
-    perm_coefs[p, ] <- perm_fit$coefficients
-  }
-
-  # Calculate p-values (two-tailed)
+  # Storage for p-values and standard errors
   p_values <- numeric(n_params)
-  for (i in 1:n_params) {
-    p_values[i] <- mean(abs(perm_coefs[, i]) >= abs(obs_coef[i]))
-  }
+  se <- numeric(n_params)
 
-  # Calculate standard errors from permutation distribution
-  se <- apply(perm_coefs, 2, sd)
+  n <- nrow(Y)
+
+  # Intercept doesn't need permutation test (always included)
+  p_values[1] <- NA
+  se[1] <- NA
+
+  # DKS 2007 Double Semi-Partialling:
+  # For EACH coefficient (except intercept), run separate permutation test
+  for (var_idx in 1:n_x_vars) {
+    # Create matrix of all OTHER X variables
+    if (n_x_vars > 1) {
+      other_indices <- setdiff(1:n_x_vars, var_idx)
+      other_x_mat <- x_mat[, other_indices, drop = FALSE]
+      other_x_mat_full <- cbind(1, other_x_mat)  # Add intercept
+    } else {
+      # If only one X variable, "other" variables is just intercept
+      other_x_mat_full <- matrix(1, nrow = nrow(x_mat), ncol = 1)
+    }
+
+    # Step 1: Regress focal X variable on all other X variables
+    # X_focal = δ * X_others + residuals
+    focal_x_vec <- x_mat[, var_idx]
+    resid_fit <- lm.fit(other_x_mat_full, focal_x_vec)
+    focal_x_resid <- resid_fit$residuals  # These are X̂_Z from the paper
+
+    # Storage for permuted coefficients
+    perm_coefs <- numeric(nperm)
+
+    # Step 2: Permutation loop
+    for (p in 1:nperm) {
+      # Generate random permutation
+      perm_idx <- sample(1:n)
+
+      # Permute the RESIDUALS (not the original X!)
+      focal_x_resid_perm <- focal_x_resid[perm_idx]
+
+      # Step 3: Regress Y on permuted residuals + other X variables
+      # Y = β * π(X̂_focal) + γ * X_others + E
+      if (n_x_vars > 1) {
+        perm_x_mat <- cbind(1, focal_x_resid_perm, other_x_mat)
+      } else {
+        perm_x_mat <- cbind(1, focal_x_resid_perm)
+      }
+
+      perm_fit <- lm.fit(perm_x_mat, y_vec)
+
+      # Store coefficient for the focal variable (index 2, after intercept)
+      perm_coefs[p] <- perm_fit$coefficients[2]
+    }
+
+    # Calculate p-value (two-tailed)
+    # var_idx + 1 because index 1 is intercept
+    p_values[var_idx + 1] <- mean(abs(perm_coefs) >= abs(obs_coef[var_idx + 1]))
+
+    # Calculate standard error from permutation distribution
+    se[var_idx + 1] <- sd(perm_coefs)
+  }
 
   # Calculate t-statistics
   t_stats <- obs_coef / se
 
   # Return results
-  param_names <- c("Intercept", paste0("X", 1:(n_params - 1)))
+  param_names <- c("Intercept", paste0("X", 1:n_x_vars))
 
   return(list(
     coefficients = obs_coef,
@@ -109,8 +139,7 @@ qap_dsp_regression <- function(Y, X, nperm = 1000) {
     t_statistics = t_stats,
     p_values = p_values,
     param_names = param_names,
-    nperm = nperm,
-    perm_dist = perm_coefs
+    nperm = nperm
   ))
 }
 
