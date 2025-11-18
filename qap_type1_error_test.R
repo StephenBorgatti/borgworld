@@ -4,10 +4,10 @@
 #
 # Purpose: Verify that QAP correlation maintains proper Type I error control
 #          (5% false positive rate at α=0.05) when testing correlation between
-#          two independent networks that both exhibit reciprocity and transitivity.
+#          two independent undirected networks that both exhibit transitivity.
 #
 # Author: Generated for borgworld package validation
-# Date: 2025-11-12
+# Date: 2025-11-18
 ################################################################################
 
 # Set seed for reproducibility
@@ -76,52 +76,44 @@ qap_cor <- function(X, Y, nperm = 1000) {
 }
 
 
-#' Generate Directed Network with Reciprocity and Transitivity
+#' Generate Undirected Network with Transitivity
 #'
-#' Generates a directed binary adjacency matrix with specified structural properties
+#' Generates an undirected binary adjacency matrix with specified structural properties
 #' using an iterative rewiring approach.
 #'
 #' @param n Number of nodes
 #' @param density Target edge density (proportion of possible edges)
-#' @param reciprocity Target reciprocity coefficient (0-1)
 #' @param transitivity Target transitivity/clustering coefficient (0-1)
 #' @param max_iter Maximum iterations for optimization (default 1000)
 #' @param tol Tolerance for meeting targets (default 0.05)
-#' @return n x n binary adjacency matrix
-generate_network <- function(n, density = 0.1, reciprocity = 0.4,
+#' @return n x n symmetric binary adjacency matrix
+generate_network <- function(n, density = 0.1,
                              transitivity = 0.3, max_iter = 1000,
                              tol = 0.05) {
 
-  # Start with random directed graph at target density
-  n_edges <- round(n * (n - 1) * density)
+  # Start with random undirected graph at target density
+  # For undirected graphs, we only count unique edges (upper triangle)
+  n_edges <- round(n * (n - 1) / 2 * density)
 
   # Initialize with random edges
   adj <- matrix(0, n, n)
   diag(adj) <- 0  # no self-loops
 
-  # Randomly place edges
-  possible_edges <- which(upper.tri(adj) | lower.tri(adj))
+  # Randomly place edges in upper triangle only
+  possible_edges <- which(upper.tri(adj))
   edge_idx <- sample(possible_edges, n_edges)
   adj[edge_idx] <- 1
 
-  # Iteratively modify to achieve target reciprocity and transitivity
+  # Make symmetric (undirected)
+  adj <- adj + t(adj)
+
+  # Iteratively modify to achieve target transitivity
   for (iter in 1:max_iter) {
-    current_recip <- calculate_reciprocity(adj)
-    current_trans <- sna::gtrans(adj)  # Use sna package for transitivity
+    current_trans <- sna::gtrans(adj, mode = "graph")  # Use graph mode for undirected
 
-    # Check if we've met targets
-    if (abs(current_recip - reciprocity) < tol &&
-        abs(current_trans - transitivity) < tol) {
+    # Check if we've met target
+    if (abs(current_trans - transitivity) < tol) {
       break
-    }
-
-    # Adjust reciprocity
-    if (current_recip < reciprocity - tol) {
-      # Add reciprocal edges
-      adj <- add_reciprocal_edge(adj)
-    } else if (current_recip > reciprocity + tol) {
-      # Remove some reciprocal edges
-      adj <- remove_reciprocal_edge(adj)
     }
 
     # Adjust transitivity
@@ -134,18 +126,28 @@ generate_network <- function(n, density = 0.1, reciprocity = 0.4,
     }
 
     # Maintain approximate density
-    current_density <- sum(adj) / (n * (n - 1))
+    current_density <- sum(adj) / (n * (n - 1))  # Count both directions
     if (current_density < density - 0.02) {
-      # Add random edge
-      zeros <- which(adj == 0 & row(adj) != col(adj))
+      # Add random edge (and its symmetric pair)
+      zeros <- which(upper.tri(adj) & adj == 0)
       if (length(zeros) > 0) {
-        adj[sample(zeros, 1)] <- 1
+        idx <- sample(zeros, 1)
+        adj[idx] <- 1
+        # Add symmetric edge
+        i <- ((idx - 1) %% n) + 1
+        j <- ((idx - 1) %/% n) + 1
+        adj[j, i] <- 1
       }
     } else if (current_density > density + 0.02) {
-      # Remove random edge (prefer non-reciprocal)
-      ones <- which(adj == 1)
+      # Remove random edge (and its symmetric pair)
+      ones <- which(upper.tri(adj) & adj == 1)
       if (length(ones) > 0) {
-        adj[sample(ones, 1)] <- 0
+        idx <- sample(ones, 1)
+        adj[idx] <- 0
+        # Remove symmetric edge
+        i <- ((idx - 1) %% n) + 1
+        j <- ((idx - 1) %/% n) + 1
+        adj[j, i] <- 0
       }
     }
   }
@@ -154,74 +156,14 @@ generate_network <- function(n, density = 0.1, reciprocity = 0.4,
 }
 
 
-#' Calculate Reciprocity
+#' Add a Transitive Edge (Close a Triad) for Undirected Graph
 #'
-#' @param adj Adjacency matrix
-#' @return Reciprocity coefficient (proportion of reciprocated edges)
-calculate_reciprocity <- function(adj) {
-  # Count edges that are reciprocated
-  recip_edges <- sum(adj * t(adj))
-  total_edges <- sum(adj)
-
-  if (total_edges == 0) return(0)
-  return(recip_edges / total_edges)
-}
-
-
-#' Add a Reciprocal Edge
-#'
-#' @param adj Adjacency matrix
-#' @return Modified adjacency matrix
-add_reciprocal_edge <- function(adj) {
-  # Find edges that are not reciprocated
-  non_recip <- which(adj == 1 & t(adj) == 0)
-
-  if (length(non_recip) > 0) {
-    idx <- sample(non_recip, 1)
-    # Get i,j coordinates
-    i <- ((idx - 1) %% nrow(adj)) + 1
-    j <- ((idx - 1) %/% nrow(adj)) + 1
-    # Add reciprocal edge j->i
-    adj[j, i] <- 1
-  }
-
-  return(adj)
-}
-
-
-#' Remove a Reciprocal Edge
-#'
-#' @param adj Adjacency matrix
-#' @return Modified adjacency matrix
-remove_reciprocal_edge <- function(adj) {
-  # Find reciprocal edges
-  recip <- which(adj == 1 & t(adj) == 1)
-
-  if (length(recip) > 0) {
-    idx <- sample(recip, 1)
-    # Get i,j coordinates
-    i <- ((idx - 1) %% nrow(adj)) + 1
-    j <- ((idx - 1) %/% nrow(adj)) + 1
-    # Remove one direction
-    if (runif(1) > 0.5) {
-      adj[i, j] <- 0
-    } else {
-      adj[j, i] <- 0
-    }
-  }
-
-  return(adj)
-}
-
-
-#' Add a Transitive Edge (Close a Triad)
-#'
-#' @param adj Adjacency matrix
-#' @return Modified adjacency matrix
+#' @param adj Symmetric adjacency matrix
+#' @return Modified symmetric adjacency matrix
 add_transitive_edge <- function(adj) {
   n <- nrow(adj)
 
-  # Look for open triads: i->j and j->k exist, but not i->k
+  # Look for open triads: i-j and j-k exist, but not i-k
   for (attempt in 1:10) {  # Try a few times
     i <- sample(1:n, 1)
     j_options <- which(adj[i, ] == 1)
@@ -232,7 +174,9 @@ add_transitive_edge <- function(adj) {
 
       if (length(k_options) > 0) {
         k <- sample(k_options, 1)
+        # Add edge i-k (both directions for undirected)
         adj[i, k] <- 1
+        adj[k, i] <- 1
         return(adj)
       }
     }
@@ -242,26 +186,27 @@ add_transitive_edge <- function(adj) {
 }
 
 
-#' Remove a Transitive Edge
+#' Remove a Transitive Edge for Undirected Graph
 #'
-#' @param adj Adjacency matrix
-#' @return Modified adjacency matrix
+#' @param adj Symmetric adjacency matrix
+#' @return Modified symmetric adjacency matrix
 remove_transitive_edge <- function(adj) {
   n <- nrow(adj)
 
-  # Look for transitive triads: i->j, j->k, and i->k all exist
+  # Look for transitive triads: i-j, j-k, and i-k all exist
   for (attempt in 1:10) {
     i <- sample(1:n, 1)
     k_options <- which(adj[i, ] == 1)
 
     if (length(k_options) > 0) {
       k <- sample(k_options, 1)
-      # Check if there's a j such that i->j->k
-      j_options <- which(adj[i, ] == 1 & adj[, k] == 1)
+      # Check if there's a j such that i-j-k triangle exists
+      j_options <- which(adj[i, ] == 1 & adj[k, ] == 1 & (1:n) != k)
 
       if (length(j_options) > 0) {
-        # Remove i->k edge
+        # Remove i-k edge (both directions for undirected)
         adj[i, k] <- 0
+        adj[k, i] <- 0
         return(adj)
       }
     }
@@ -287,7 +232,6 @@ network_sizes <- c(30, 50)  # Test different network sizes
 
 # Network generation parameters
 target_density <- 0.1
-target_reciprocity <- 0.4
 target_transitivity <- 0.3
 
 
@@ -306,8 +250,6 @@ for (n_nodes in network_sizes) {
   # Storage for results
   p_values <- numeric(n_simulations)
   actual_cors <- numeric(n_simulations)
-  reciprocity_X <- numeric(n_simulations)
-  reciprocity_Y <- numeric(n_simulations)
   transitivity_X <- numeric(n_simulations)
   transitivity_Y <- numeric(n_simulations)
   density_X <- numeric(n_simulations)
@@ -328,17 +270,13 @@ for (n_nodes in network_sizes) {
       flush.console()
     }
 
-    # Generate two independent networks with desired properties
-    X <- generate_network(n_nodes, target_density, target_reciprocity,
-                          target_transitivity)
-    Y <- generate_network(n_nodes, target_density, target_reciprocity,
-                          target_transitivity)
+    # Generate two independent undirected networks with desired properties
+    X <- generate_network(n_nodes, target_density, target_transitivity)
+    Y <- generate_network(n_nodes, target_density, target_transitivity)
 
     # Record actual network properties
-    reciprocity_X[i] <- calculate_reciprocity(X)
-    reciprocity_Y[i] <- calculate_reciprocity(Y)
-    transitivity_X[i] <- sna::gtrans(X)
-    transitivity_Y[i] <- sna::gtrans(Y)
+    transitivity_X[i] <- sna::gtrans(X, mode = "graph")
+    transitivity_Y[i] <- sna::gtrans(Y, mode = "graph")
     density_X[i] <- sum(X) / (n_nodes * (n_nodes - 1))
     density_Y[i] <- sum(Y) / (n_nodes * (n_nodes - 1))
 
@@ -368,8 +306,6 @@ for (n_nodes in network_sizes) {
     type1_error_rate = type1_error_rate,
     p_values = p_values,
     actual_cors = actual_cors,
-    reciprocity_X = reciprocity_X,
-    reciprocity_Y = reciprocity_Y,
     transitivity_X = transitivity_X,
     transitivity_Y = transitivity_Y,
     density_X = density_X,
@@ -434,11 +370,6 @@ for (n_nodes in network_sizes) {
   cat(sprintf("    X: %.3f ± %.3f\n", mean(density_X), sd(density_X)))
   cat(sprintf("    Y: %.3f ± %.3f\n\n", mean(density_Y), sd(density_Y)))
 
-  cat("  RECIPROCITY:\n")
-  cat(sprintf("    Target: %.2f\n", target_reciprocity))
-  cat(sprintf("    X: %.3f ± %.3f\n", mean(reciprocity_X), sd(reciprocity_X)))
-  cat(sprintf("    Y: %.3f ± %.3f\n\n", mean(reciprocity_Y), sd(reciprocity_Y)))
-
   cat("  TRANSITIVITY:\n")
   cat(sprintf("    Target: %.2f\n", target_transitivity))
   cat(sprintf("    X: %.3f ± %.3f\n", mean(transitivity_X), sd(transitivity_X)))
@@ -448,60 +379,6 @@ for (n_nodes in network_sizes) {
   cat(sprintf("Runtime: %.1f seconds (%.2f minutes)\n", runtime, runtime/60))
   cat(sprintf("Average time per simulation: %.3f seconds\n\n",
               runtime/n_simulations))
-
-  ############################################################################
-  # PLOTS
-  ############################################################################
-
-  cat("Generating diagnostic plots...\n\n")
-
-  # Set up 2x2 plot layout
-  par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
-
-  # 1. Histogram of p-values
-  hist(p_values, breaks = 20,
-       main = sprintf("P-value Distribution (n=%d)", n_nodes),
-       xlab = "P-value",
-       ylab = "Frequency",
-       col = "lightblue",
-       border = "white")
-  abline(h = n_simulations/20, col = "red", lty = 2, lwd = 2)
-  legend("topright", legend = "Expected if uniform",
-         col = "red", lty = 2, lwd = 2, bty = "n")
-
-  # 2. QQ plot for uniformity
-  qqplot(qunif(ppoints(n_simulations)), p_values,
-         main = sprintf("Q-Q Plot vs Uniform (n=%d)", n_nodes),
-         xlab = "Theoretical Quantiles",
-         ylab = "Sample Quantiles",
-         pch = 20, col = rgb(0, 0, 1, 0.3))
-  abline(0, 1, col = "red", lwd = 2)
-
-  # 3. Distribution of actual correlations
-  hist(actual_cors, breaks = 30,
-       main = sprintf("Actual Correlations (n=%d)", n_nodes),
-       xlab = "Correlation between X and Y",
-       ylab = "Frequency",
-       col = "lightgreen",
-       border = "white")
-  abline(v = 0, col = "red", lty = 2, lwd = 2)
-  abline(v = mean(actual_cors), col = "blue", lwd = 2)
-  legend("topright",
-         legend = c("True value (0)", sprintf("Mean = %.3f", mean(actual_cors))),
-         col = c("red", "blue"), lty = c(2, 1), lwd = 2, bty = "n")
-
-  # 4. Cumulative distribution of p-values
-  plot(ecdf(p_values),
-       main = sprintf("ECDF of P-values (n=%d)", n_nodes),
-       xlab = "P-value",
-       ylab = "Cumulative Probability",
-       col = "blue", lwd = 2)
-  abline(0, 1, col = "red", lty = 2, lwd = 2)
-  legend("topleft", legend = c("Observed", "Expected (uniform)"),
-         col = c("blue", "red"), lty = c(1, 2), lwd = 2, bty = "n")
-
-  # Reset par
-  par(mfrow = c(1, 1))
 }
 
 
@@ -531,7 +408,7 @@ all_within_ci <- all(abs(summary_df$Type_I_Error - 0.05) < 0.015)
 
 if (all_within_ci) {
   cat("QAP correlation successfully controls Type I error rate at α=0.05\n")
-  cat("  even when networks exhibit reciprocity and transitivity.\n\n")
+  cat("  even when undirected networks exhibit transitivity.\n\n")
 } else {
   cat("WARNING: QAP correlation shows inflated or deflated Type I error\n")
   cat("  when networks have autocorrelation structure.\n\n")

@@ -4,7 +4,7 @@
 ################################################################################
 #
 # Purpose: Verify that QAP regression maintains proper Type I error control
-#          when testing regression with two independent variables:
+#          when testing regression with two independent variables on undirected networks:
 #          1. X: An independent network
 #          2. same_category: Homophily matrix (1 if same category, 0 otherwise)
 #
@@ -12,9 +12,10 @@
 #         X is generated independently (also with homophily on same attribute)
 #         same_category matrix indicates shared attributes
 #         X and same_category should not predict Y (Type I error test)
+#         All networks are undirected (symmetric matrices)
 #
 # Author: Generated for borgworld package validation
-# Date: 2025-11-14
+# Date: 2025-11-18
 ################################################################################
 
 # Set seed for reproducibility
@@ -219,19 +220,18 @@ calculate_homophily <- function(adj, attributes) {
 }
 
 
-#' Generate Network with Homophily, Reciprocity and Transitivity
+#' Generate Undirected Network with Homophily and Transitivity
 #'
 #' @param n Number of nodes
 #' @param attributes Vector of categorical node attributes
 #' @param density Target edge density
 #' @param homophily_p Probability multiplier for within-category ties (default 2/3)
-#' @param reciprocity Target reciprocity coefficient
 #' @param transitivity Target transitivity coefficient
 #' @param max_iter Maximum iterations for optimization
 #' @param tol Tolerance for meeting targets
-#' @return n x n binary adjacency matrix
+#' @return n x n symmetric binary adjacency matrix
 generate_network_with_homophily <- function(n, attributes, density = 0.1,
-                                            homophily_p = 2/3, reciprocity = 0.4,
+                                            homophily_p = 2/3,
                                             transitivity = 0.3, max_iter = 1000,
                                             tol = 0.05) {
 
@@ -239,25 +239,26 @@ generate_network_with_homophily <- function(n, attributes, density = 0.1,
   adj <- matrix(0, n, n)
   diag(adj) <- 0
 
-  # Calculate target number of edges
-  n_edges <- round(n * (n - 1) * density)
+  # Calculate target number of edges (for undirected graph, use upper triangle only)
+  n_edges <- round(n * (n - 1) / 2 * density)
 
-  # Create homophily probability matrix
-  prob_matrix <- matrix(1 - homophily_p, n, n)  # Between-category probability
-  for (i in 1:n) {
-    for (j in 1:n) {
-      if (attributes[i] == attributes[j] && i != j) {
+  # Create homophily probability matrix (only upper triangle needed)
+  prob_matrix <- matrix(0, n, n)
+  for (i in 1:(n-1)) {
+    for (j in (i+1):n) {
+      if (attributes[i] == attributes[j]) {
         prob_matrix[i, j] <- homophily_p  # Within-category probability
+      } else {
+        prob_matrix[i, j] <- 1 - homophily_p  # Between-category probability
       }
     }
   }
-  diag(prob_matrix) <- 0
 
   # Normalize probabilities to sum to 1
-  prob_matrix <- prob_matrix / sum(prob_matrix)
+  prob_matrix <- prob_matrix / sum(prob_matrix[upper.tri(prob_matrix)])
 
-  # Sample edges based on homophily probabilities
-  possible_edges <- which(upper.tri(prob_matrix) | lower.tri(prob_matrix))
+  # Sample edges based on homophily probabilities (upper triangle only)
+  possible_edges <- which(upper.tri(prob_matrix))
   edge_probs <- prob_matrix[possible_edges]
 
   # Sample edges with replacement, then take unique
@@ -265,25 +266,18 @@ generate_network_with_homophily <- function(n, attributes, density = 0.1,
                           replace = TRUE, prob = edge_probs)
   sampled_edges <- unique(sampled_edges)[1:min(n_edges, length(unique(sampled_edges)))]
 
-  # Place initial edges
+  # Place initial edges in upper triangle
   adj[sampled_edges] <- 1
+  # Make symmetric (undirected)
+  adj <- adj + t(adj)
 
-  # Iteratively adjust for reciprocity and transitivity while preserving homophily
+  # Iteratively adjust for transitivity while preserving homophily
   for (iter in 1:max_iter) {
-    current_recip <- calculate_reciprocity(adj)
     current_trans <- calculate_transitivity(adj)
 
-    # Check if we've met targets
-    if (abs(current_recip - reciprocity) < tol &&
-        abs(current_trans - transitivity) < tol) {
+    # Check if we've met target
+    if (abs(current_trans - transitivity) < tol) {
       break
-    }
-
-    # Adjust reciprocity (prefer within-category reciprocal edges)
-    if (current_recip < reciprocity - tol) {
-      adj <- add_reciprocal_edge_homophily(adj, attributes)
-    } else if (current_recip > reciprocity + tol) {
-      adj <- remove_reciprocal_edge(adj)
     }
 
     # Adjust transitivity (prefer within-category transitive closure)
@@ -308,43 +302,11 @@ generate_network_with_homophily <- function(n, attributes, density = 0.1,
 }
 
 
-#' Add Reciprocal Edge with Homophily Preference
+#' Add Transitive Edge with Homophily Preference for Undirected Graph
 #'
-#' @param adj Adjacency matrix
+#' @param adj Symmetric adjacency matrix
 #' @param attributes Node attributes
-#' @return Modified adjacency matrix
-add_reciprocal_edge_homophily <- function(adj, attributes) {
-  # Find non-reciprocated edges
-  non_recip <- which(adj == 1 & t(adj) == 0)
-
-  if (length(non_recip) > 0) {
-    # Prefer within-category edges
-    indices <- arrayInd(non_recip, dim(adj))
-    same_cat <- attributes[indices[,1]] == attributes[indices[,2]]
-
-    # Sample preferring within-category
-    if (any(same_cat)) {
-      idx <- sample(non_recip[same_cat], 1)
-    } else {
-      idx <- sample(non_recip, 1)
-    }
-
-    # Get i,j coordinates
-    i <- ((idx - 1) %% nrow(adj)) + 1
-    j <- ((idx - 1) %/% nrow(adj)) + 1
-    # Add reciprocal edge j->i
-    adj[j, i] <- 1
-  }
-
-  return(adj)
-}
-
-
-#' Add Transitive Edge with Homophily Preference
-#'
-#' @param adj Adjacency matrix
-#' @param attributes Node attributes
-#' @return Modified adjacency matrix
+#' @return Modified symmetric adjacency matrix
 add_transitive_edge_homophily <- function(adj, attributes) {
   n <- nrow(adj)
 
@@ -372,7 +334,9 @@ add_transitive_edge_homophily <- function(adj, attributes) {
         } else {
           k <- sample(k_options, 1)
         }
+        # Add edge i-k (both directions for undirected)
         adj[i, k] <- 1
+        adj[k, i] <- 1
         return(adj)
       }
     }
@@ -382,13 +346,14 @@ add_transitive_edge_homophily <- function(adj, attributes) {
 }
 
 
-#' Add Edge with Homophily Preference
+#' Add Edge with Homophily Preference for Undirected Graph
 #'
-#' @param adj Adjacency matrix
+#' @param adj Symmetric adjacency matrix
 #' @param attributes Node attributes
-#' @return Modified adjacency matrix
+#' @return Modified symmetric adjacency matrix
 add_edge_homophily <- function(adj, attributes) {
-  zeros <- which(adj == 0 & row(adj) != col(adj))
+  # Only consider upper triangle to avoid duplicates
+  zeros <- which(upper.tri(adj) & adj == 0)
 
   if (length(zeros) > 0) {
     # Get indices
@@ -402,20 +367,26 @@ add_edge_homophily <- function(adj, attributes) {
       idx <- sample(zeros, 1)
     }
 
+    # Add edge (both directions for undirected)
     adj[idx] <- 1
+    # Get i,j coordinates and add symmetric edge
+    i <- ((idx - 1) %% nrow(adj)) + 1
+    j <- ((idx - 1) %/% nrow(adj)) + 1
+    adj[j, i] <- 1
   }
 
   return(adj)
 }
 
 
-#' Remove Edge with Homophily Preference
+#' Remove Edge with Homophily Preference for Undirected Graph
 #'
-#' @param adj Adjacency matrix
+#' @param adj Symmetric adjacency matrix
 #' @param attributes Node attributes
-#' @return Modified adjacency matrix
+#' @return Modified symmetric adjacency matrix
 remove_edge_homophily <- function(adj, attributes) {
-  ones <- which(adj == 1)
+  # Only consider upper triangle to avoid duplicates
+  ones <- which(upper.tri(adj) & adj == 1)
 
   if (length(ones) > 0) {
     # Get indices
@@ -429,23 +400,15 @@ remove_edge_homophily <- function(adj, attributes) {
       idx <- sample(ones, 1)
     }
 
+    # Remove edge (both directions for undirected)
     adj[idx] <- 0
+    # Get i,j coordinates and remove symmetric edge
+    i <- ((idx - 1) %% nrow(adj)) + 1
+    j <- ((idx - 1) %/% nrow(adj)) + 1
+    adj[j, i] <- 0
   }
 
   return(adj)
-}
-
-
-#' Calculate Reciprocity
-#'
-#' @param adj Adjacency matrix
-#' @return Reciprocity coefficient
-calculate_reciprocity <- function(adj) {
-  recip_edges <- sum(adj * t(adj))
-  total_edges <- sum(adj)
-
-  if (total_edges == 0) return(0)
-  return(recip_edges / total_edges)
 }
 
 
@@ -483,33 +446,10 @@ calculate_transitivity <- function(adj) {
 }
 
 
-#' Remove Reciprocal Edge
+#' Remove Transitive Edge for Undirected Graph
 #'
-#' @param adj Adjacency matrix
-#' @return Modified adjacency matrix
-remove_reciprocal_edge <- function(adj) {
-  recip <- which(adj == 1 & t(adj) == 1)
-
-  if (length(recip) > 0) {
-    idx <- sample(recip, 1)
-    i <- ((idx - 1) %% nrow(adj)) + 1
-    j <- ((idx - 1) %/% nrow(adj)) + 1
-
-    if (runif(1) > 0.5) {
-      adj[i, j] <- 0
-    } else {
-      adj[j, i] <- 0
-    }
-  }
-
-  return(adj)
-}
-
-
-#' Remove Transitive Edge
-#'
-#' @param adj Adjacency matrix
-#' @return Modified adjacency matrix
+#' @param adj Symmetric adjacency matrix
+#' @return Modified symmetric adjacency matrix
 remove_transitive_edge <- function(adj) {
   n <- nrow(adj)
 
@@ -519,10 +459,12 @@ remove_transitive_edge <- function(adj) {
 
     if (length(k_options) > 0) {
       k <- sample(k_options, 1)
-      j_options <- which(adj[i, ] == 1 & adj[, k] == 1)
+      j_options <- which(adj[i, ] == 1 & adj[k, ] == 1 & (1:n) != k)
 
       if (length(j_options) > 0) {
+        # Remove edge i-k (both directions for undirected)
         adj[i, k] <- 0
+        adj[k, i] <- 0
         return(adj)
       }
     }
@@ -550,13 +492,11 @@ n_categories <- 3  # Number of categories for attributes
 
 # Network generation parameters
 target_density <- 0.1
-target_reciprocity <- 0.4
 target_transitivity <- 0.3
 homophily_p <- .5  # Within-category tie probability multiplier
 
 cat("Network Parameters:\n")
 cat(sprintf("  Density: %.2f\n", target_density))
-cat(sprintf("  Reciprocity: %.2f\n", target_reciprocity))
 cat(sprintf("  Transitivity: %.2f\n", target_transitivity))
 cat(sprintf("  Categories: %d\n", n_categories))
 cat(sprintf("  Within-category tie preference: %.2f\n", homophily_p))
@@ -579,14 +519,17 @@ for (n_nodes in network_sizes) {
   p_values_same_cat <- numeric(n_simulations)
   coef_X <- numeric(n_simulations)
   coef_same_cat <- numeric(n_simulations)
-  reciprocity_X <- numeric(n_simulations)
-  reciprocity_Y <- numeric(n_simulations)
   transitivity_X <- numeric(n_simulations)
   transitivity_Y <- numeric(n_simulations)
   density_X <- numeric(n_simulations)
   density_Y <- numeric(n_simulations)
   homophily_X <- numeric(n_simulations)
   homophily_Y <- numeric(n_simulations)
+
+  # Storage for correlations between all pairs of matrices
+  cor_X_Y <- numeric(n_simulations)
+  cor_X_same_cat <- numeric(n_simulations)
+  cor_Y_same_cat <- numeric(n_simulations)
 
   # Track runtime
   start_time <- Sys.time()
@@ -609,23 +552,27 @@ for (n_nodes in network_sizes) {
     # Create same_category matrix
     same_category <- create_same_category_matrix(attributes)
 
-    # Generate two independent networks with homophily on the same attribute
+    # Generate two independent undirected networks with homophily on the same attribute
     X <- generate_network_with_homophily(n_nodes, attributes, target_density,
-                                         homophily_p, target_reciprocity,
-                                         target_transitivity)
+                                         homophily_p, target_transitivity)
     Y <- generate_network_with_homophily(n_nodes, attributes, target_density,
-                                         homophily_p, target_reciprocity,
-                                         target_transitivity)
+                                         homophily_p, target_transitivity)
 
     # Record actual network properties
-    reciprocity_X[i] <- calculate_reciprocity(X)
-    reciprocity_Y[i] <- calculate_reciprocity(Y)
     transitivity_X[i] <- calculate_transitivity(X)
     transitivity_Y[i] <- calculate_transitivity(Y)
     density_X[i] <- sum(X) / (n_nodes * (n_nodes - 1))
     density_Y[i] <- sum(Y) / (n_nodes * (n_nodes - 1))
     homophily_X[i] <- calculate_homophily(X, attributes)
     homophily_Y[i] <- calculate_homophily(Y, attributes)
+
+    # Calculate correlations between all pairs of matrices (using off-diagonal elements)
+    get_off_diag <- function(mat) {
+      mat[lower.tri(mat) | upper.tri(mat)]
+    }
+    cor_X_Y[i] <- cor(get_off_diag(X), get_off_diag(Y))
+    cor_X_same_cat[i] <- cor(get_off_diag(X), get_off_diag(same_category))
+    cor_Y_same_cat[i] <- cor(get_off_diag(Y), get_off_diag(same_category))
 
     # Run QAP regression test (regressing Y on X and same_category)
     qap_reg_result <- qap_dsp_regression(Y, list(X, same_category), nperm = n_permutations)
@@ -659,14 +606,15 @@ for (n_nodes in network_sizes) {
     p_values_same_cat = p_values_same_cat,
     coef_X = coef_X,
     coef_same_cat = coef_same_cat,
-    reciprocity_X = reciprocity_X,
-    reciprocity_Y = reciprocity_Y,
     transitivity_X = transitivity_X,
     transitivity_Y = transitivity_Y,
     density_X = density_X,
     density_Y = density_Y,
     homophily_X = homophily_X,
     homophily_Y = homophily_Y,
+    cor_X_Y = cor_X_Y,
+    cor_X_same_cat = cor_X_same_cat,
+    cor_Y_same_cat = cor_Y_same_cat,
     runtime = runtime
   )
 
@@ -725,17 +673,18 @@ for (n_nodes in network_sizes) {
   cat(sprintf("  X:             Mean = %.4f, SD = %.4f\n", mean(coef_X), sd(coef_X)))
   cat(sprintf("  same_category: Mean = %.4f, SD = %.4f\n\n", mean(coef_same_cat), sd(coef_same_cat)))
 
+  # Correlations between matrices
+  cat("Correlations Between Matrices:\n")
+  cat(sprintf("  cor(X, Y):             Mean = %.4f, SD = %.4f\n", mean(cor_X_Y), sd(cor_X_Y)))
+  cat(sprintf("  cor(X, same_category): Mean = %.4f, SD = %.4f\n", mean(cor_X_same_cat), sd(cor_X_same_cat)))
+  cat(sprintf("  cor(Y, same_category): Mean = %.4f, SD = %.4f\n\n", mean(cor_Y_same_cat), sd(cor_Y_same_cat)))
+
   # Network properties achieved
   cat("Achieved Network Properties:\n")
   cat("\n  DENSITY:\n")
   cat(sprintf("    Target: %.2f\n", target_density))
   cat(sprintf("    X: %.3f ± %.3f\n", mean(density_X), sd(density_X)))
   cat(sprintf("    Y: %.3f ± %.3f\n\n", mean(density_Y), sd(density_Y)))
-
-  cat("  RECIPROCITY:\n")
-  cat(sprintf("    Target: %.2f\n", target_reciprocity))
-  cat(sprintf("    X: %.3f ± %.3f\n", mean(reciprocity_X), sd(reciprocity_X)))
-  cat(sprintf("    Y: %.3f ± %.3f\n\n", mean(reciprocity_Y), sd(reciprocity_Y)))
 
   cat("  TRANSITIVITY:\n")
   cat(sprintf("    Target: %.2f\n", target_transitivity))
@@ -753,114 +702,6 @@ for (n_nodes in network_sizes) {
   cat(sprintf("Runtime: %.1f seconds (%.2f minutes)\n", runtime, runtime/60))
   cat(sprintf("Average time per simulation: %.3f seconds\n\n",
               runtime/n_simulations))
-
-  ############################################################################
-  # PLOTS
-  ############################################################################
-
-  cat("Generating diagnostic plots...\n\n")
-
-  # Open a new graphics window with appropriate size
-  # Use windows() on Windows, quartz() on Mac, or x11() on Linux
-  if (.Platform$OS.type == "windows") {
-    windows(width = 16, height = 8)
-  } else if (Sys.info()["sysname"] == "Darwin") {
-    quartz(width = 16, height = 8)
-  } else {
-    x11(width = 16, height = 8)
-  }
-  # Set up 2x4 plot layout with better margins
-  par(mfrow = c(2, 4), mar = c(4, 4, 3, 1), oma = c(1, 1, 1, 1))
-
-
-  # 1. Histogram of p-values (X coefficient)
-  hist(p_values_X, breaks = 20,
-       main = sprintf("P-values (X coef) (n=%d)", n_nodes),
-       xlab = "P-value",
-       ylab = "Frequency",
-       col = "lightblue",
-       border = "white")
-  abline(h = n_simulations/20, col = "red", lty = 2, lwd = 2)
-  legend("topright", legend = "Expected if uniform",
-         col = "red", lty = 2, lwd = 2, bty = "n", cex = 0.8)
-
-  # 2. Histogram of p-values (same_category coefficient)
-  hist(p_values_same_cat, breaks = 20,
-       main = sprintf("P-values (same_cat coef) (n=%d)", n_nodes),
-       xlab = "P-value",
-       ylab = "Frequency",
-       col = "lightcoral",
-       border = "white")
-  abline(h = n_simulations/20, col = "red", lty = 2, lwd = 2)
-  legend("topright", legend = "Expected if uniform",
-         col = "red", lty = 2, lwd = 2, bty = "n", cex = 0.8)
-
-  # 3. Distribution of X coefficients
-  hist(coef_X, breaks = 30,
-       main = sprintf("Coefficients (X) (n=%d)", n_nodes),
-       xlab = "Coefficient for X",
-       ylab = "Frequency",
-       col = "lightgreen",
-       border = "white")
-  abline(v = 0, col = "red", lty = 2, lwd = 2)
-  abline(v = mean(coef_X), col = "blue", lwd = 2)
-  legend("topright",
-         legend = c("True (0)", sprintf("Mean=%.3f", mean(coef_X))),
-         col = c("red", "blue"), lty = c(2, 1), lwd = 2, bty = "n", cex = 0.8)
-
-  # 4. Distribution of same_category coefficients
-  hist(coef_same_cat, breaks = 30,
-       main = sprintf("Coefficients (same_cat) (n=%d)", n_nodes),
-       xlab = "Coefficient for same_category",
-       ylab = "Frequency",
-       col = "lightyellow",
-       border = "white")
-  abline(v = 0, col = "red", lty = 2, lwd = 2)
-  abline(v = mean(coef_same_cat), col = "blue", lwd = 2)
-  legend("topright",
-         legend = c("True (0)", sprintf("Mean=%.3f", mean(coef_same_cat))),
-         col = c("red", "blue"), lty = c(2, 1), lwd = 2, bty = "n", cex = 0.8)
-
-  # 5. ECDF of p-values (X coefficient)
-  plot(ecdf(p_values_X),
-       main = sprintf("ECDF P-values (X) (n=%d)", n_nodes),
-       xlab = "P-value",
-       ylab = "Cumulative Probability",
-       col = "blue", lwd = 2)
-  abline(0, 1, col = "red", lty = 2, lwd = 2)
-  legend("topleft", legend = c("Observed", "Uniform"),
-         col = c("blue", "red"), lty = c(1, 2), lwd = 2, bty = "n", cex = 0.8)
-
-  # 6. ECDF of p-values (same_category coefficient)
-  plot(ecdf(p_values_same_cat),
-       main = sprintf("ECDF P-values (same_cat) (n=%d)", n_nodes),
-       xlab = "P-value",
-       ylab = "Cumulative Probability",
-       col = "darkgreen", lwd = 2)
-  abline(0, 1, col = "red", lty = 2, lwd = 2)
-  legend("topleft", legend = c("Observed", "Uniform"),
-         col = c("darkgreen", "red"), lty = c(1, 2), lwd = 2, bty = "n", cex = 0.8)
-
-  # 7. Homophily levels in X and Y (same attribute)
-  plot(homophily_X, homophily_Y,
-       main = sprintf("Homophily (same attr) (n=%d)", n_nodes),
-       xlab = "Homophily in X",
-       ylab = "Homophily in Y",
-       pch = 20, col = rgb(0, 0, 1, 0.1))
-  abline(h = mean(homophily_Y, na.rm=TRUE), col = "red", lty = 2)
-  abline(v = mean(homophily_X, na.rm=TRUE), col = "red", lty = 2)
-
-  # 8. X coefficient vs same_category coefficient
-  plot(coef_X, coef_same_cat,
-       main = sprintf("Coef X vs Coef same_cat (n=%d)", n_nodes),
-       xlab = "Coefficient for X",
-       ylab = "Coefficient for same_category",
-       pch = 20, col = rgb(0, 0, 1, 0.1))
-  abline(h = 0, col = "red", lty = 2)
-  abline(v = 0, col = "red", lty = 2)
-
-  # Reset par
-  par(mfrow = c(1, 1))
 }
 
 
@@ -879,6 +720,9 @@ summary_df <- data.frame(
   Type_I_Error_same_cat = sapply(results_summary, function(x) x$type1_error_rate_same_cat),
   Mean_Coef_X = sapply(results_summary, function(x) mean(x$coef_X)),
   Mean_Coef_same_cat = sapply(results_summary, function(x) mean(x$coef_same_cat)),
+  Mean_cor_X_Y = sapply(results_summary, function(x) mean(x$cor_X_Y)),
+  Mean_cor_X_same_cat = sapply(results_summary, function(x) mean(x$cor_X_same_cat)),
+  Mean_cor_Y_same_cat = sapply(results_summary, function(x) mean(x$cor_Y_same_cat)),
   Mean_Homophily_X = sapply(results_summary, function(x) mean(x$homophily_X, na.rm=TRUE)),
   Mean_Homophily_Y = sapply(results_summary, function(x) mean(x$homophily_Y, na.rm=TRUE)),
   Runtime_sec = sapply(results_summary, function(x) x$runtime)
@@ -909,8 +753,7 @@ if (all_within_ci_same_cat) {
   cat("  WARNING: Shows inflated or deflated Type I error\n")
 }
 
-cat("\nTest was conducted on networks with:\n")
-cat("  - Reciprocity\n")
+cat("\nTest was conducted on undirected networks with:\n")
 cat("  - Transitivity\n")
 cat("  - Homophily (on the same attribute)\n\n")
 
