@@ -63,7 +63,8 @@ bpaste <- function(header = TRUE, sep = "\t", auto_rownames = TRUE) {
 
   clipboard_text <- clipr::read_clip()
   df <- utils::read.table(text = clipboard_text, header = header, sep = sep,
-                          stringsAsFactors = FALSE, check.names = FALSE)
+                          stringsAsFactors = FALSE, check.names = FALSE,
+                          quote = "")
   if (auto_rownames) df <- bcoltonames(df, col = NULL, remove = TRUE)
   df <- bdropmissingrows(df)
   message(paste("Dataset has", nrow(df), "rows and", ncol(df), "columns."))
