@@ -138,21 +138,47 @@ bwordcount <- function(df, text_col, group_col = NULL, values = "pct", remove_st
       dplyr::arrange(dplyr::desc(.data$total))
   }
 
-  # Format output with consistent decimal places
+  # Round numeric columns
   decimals <- switch(values,
                      "pct" = 1,
                      "prop" = 3,
                      "freq" = 0)
 
   result <- result |>
-    dplyr::mutate(dplyr::across(
-      where(is.numeric),
-      ~ format(round(., decimals), nsmall = decimals, trim = TRUE)
-    ))
+    dplyr::mutate(dplyr::across(where(is.numeric), ~ round(., decimals)))
 
-  # Convert formatted columns back to numeric for usability while preserving display
-  # Using a custom class to maintain formatting during print
   result <- as.data.frame(result)
 
+ # Add custom class and store formatting info for print method
+  class(result) <- c("bwordcount", class(result))
+  attr(result, "decimals") <- decimals
+
   result
+}
+
+#' Print method for bwordcount objects
+#'
+#' Formats numeric columns with consistent decimal places while keeping
+#' underlying data numeric.
+#'
+#' @param x A bwordcount object.
+#' @param ... Additional arguments (ignored).
+#' @return Invisibly returns x.
+#' @export
+print.bwordcount <- function(x, ...) {
+  decimals <- attr(x, "decimals") %||% 1
+
+  # Create formatted copy for display
+  display <- x
+  for (col in names(display)) {
+    if (is.numeric(display[[col]])) {
+      display[[col]] <- format(display[[col]], nsmall = decimals, trim = TRUE)
+    }
+  }
+
+  # Remove custom class for printing
+  class(display) <- "data.frame"
+  print(display, ...)
+
+  invisible(x)
 }
