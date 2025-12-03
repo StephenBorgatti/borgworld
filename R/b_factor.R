@@ -253,14 +253,16 @@ bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
   cat(sprintf("%50s = %10d\n", "Retained factors", retained_factors))
   cat(sprintf("%50s = %10d\n", "Number of params", n_params))
 
-  # Print correlation matrix
-  cat("\n")
-  cat(strrep("=", 79))
-  cat("\n")
-  cat("Correlation Matrix:\n")
-  cat(strrep("=", 79))
-  cat("\n\n")
-  print(round(cor_mat, 3))
+  # Print correlation matrix (only if smaller than 26x26)
+  if (n_vars < 26) {
+    cat("\n")
+    cat(strrep("=", 79))
+    cat("\n")
+    cat("Correlation Matrix:\n")
+    cat(strrep("=", 79))
+    cat("\n\n")
+    print(round(cor_mat, 3))
+  }
 
   # Print eigenvalue table for ALL eigenvalues from correlation matrix
   cat("\n")
