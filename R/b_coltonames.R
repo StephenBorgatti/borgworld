@@ -42,7 +42,7 @@ bcoltonames <- function(df, col = NULL, remove = TRUE) {
 
     # First, check for columns matching common ID patterns
     for (pattern in id_patterns) {
-      matches <- grep(pattern, names(df), ignore.case = FALSE)
+      matches <- grep(pattern, names(df), ignore.case = TRUE)
       if (length(matches) > 0) {
         # Check if this column meets our criteria
         col_data <- df[[matches[1]]]

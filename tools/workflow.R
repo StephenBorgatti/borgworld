@@ -49,7 +49,11 @@ devtools::load_all()   # Load it again
 # fetch changes
 system("git fetch origin")
 #merge changes from git branch learned from system()
-system("git merge origin/claude/<branch>")
+system("git merge origin/claude/document-bwordcount-function-01Jr8e32wzpVEVBg5aAG14Sy")
 
 #push back after edits
 system("git push origin main")
+
+# after doing the pull in github
+remotes::install_github("StephenBorgatti/borgworld")
+
