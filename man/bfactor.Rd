@@ -16,7 +16,9 @@ bfactor(
 )
 }
 \arguments{
-\item{data}{A data frame or matrix of observed variables}
+\item{data}{A data frame, matrix, or DocumentTermMatrix of observed variables.
+DocumentTermMatrix objects (from tm/tidytext packages) are automatically
+converted to matrix format.}
 
 \item{nfactors}{Maximum number of factors to retain for display. If NULL,
 determined by mineigen criterion. Default is NULL.}

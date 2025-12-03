@@ -12,6 +12,8 @@
 \item{newdata}{A data frame with new documents}
 
 \item{text_col}{The name or index of the text column}
+
+\item{...}{Additional arguments (ignored)}
 }
 \value{
 A data frame with topic distributions for new documents

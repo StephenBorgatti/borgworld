@@ -33,13 +33,17 @@ blda(
 \item{verbose}{Logical. Print progress messages? Default is TRUE.}
 }
 \value{
-A data frame with documents as rows and topics as columns, containing
-the probability distribution of topics for each document. Additional attributes:
+A list of class "blda" containing:
 \itemize{
-\item \code{ntopics}: Number of topics extracted
+\item \code{theta}: Document-topic probability matrix (documents x topics)
+\item \code{phi}: Topic-word probability matrix (topics x words)
+\item \code{dtm}: Document-term matrix
+\item \code{loglik}: Log-likelihood of the model
 \item \code{terms}: Top 10 terms for each topic
+\item \code{ntopics}: Number of topics
+\item \code{n_terms}: Vocabulary size
 \item \code{empty_docs}: Indices of documents with no terms after preprocessing
-\item \code{lda_model}: The underlying LDA model object
+\item \code{model}: The underlying LDA model object
 }
 }
 \description{
@@ -62,11 +66,23 @@ The function performs the following preprocessing steps:
 # Basic usage with 5 topics
 result <- blda(mydata, "text_column", ntopics = 5)
 
+# Access document-topic matrix
+result$theta
+
+# Access topic-word matrix
+result$phi
+
+# Access document-term matrix
+result$dtm
+
+# Get log-likelihood
+result$loglik
+
 # View top terms
-attr(result, "terms")
+result$terms
 
 # Access the underlying model
-model <- attr(result, "lda_model")
+result$model
 }
 
 }

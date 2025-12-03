@@ -12,13 +12,17 @@
 #' @param seed Random seed for reproducibility. Default is 12345.
 #' @param verbose Logical. Print progress messages? Default is TRUE.
 #'
-#' @return A data frame with documents as rows and topics as columns, containing
-#'   the probability distribution of topics for each document. Additional attributes:
+#' @return A list of class "blda" containing:
 #'   \itemize{
-#'     \item \code{ntopics}: Number of topics extracted
+#'     \item \code{theta}: Document-topic probability matrix (documents x topics)
+#'     \item \code{phi}: Topic-word probability matrix (topics x words)
+#'     \item \code{dtm}: Document-term matrix
+#'     \item \code{loglik}: Log-likelihood of the model
 #'     \item \code{terms}: Top 10 terms for each topic
+#'     \item \code{ntopics}: Number of topics
+#'     \item \code{n_terms}: Vocabulary size
 #'     \item \code{empty_docs}: Indices of documents with no terms after preprocessing
-#'     \item \code{lda_model}: The underlying LDA model object
+#'     \item \code{model}: The underlying LDA model object
 #'   }
 #'
 #' @details
@@ -37,11 +41,23 @@
 #' # Basic usage with 5 topics
 #' result <- blda(mydata, "text_column", ntopics = 5)
 #'
+#' # Access document-topic matrix
+#' result$theta
+#'
+#' # Access topic-word matrix
+#' result$phi
+#'
+#' # Access document-term matrix
+#' result$dtm
+#'
+#' # Get log-likelihood
+#' result$loglik
+#'
 #' # View top terms
-#' attr(result, "terms")
+#' result$terms
 #'
 #' # Access the underlying model
-#' model <- attr(result, "lda_model")
+#' result$model
 #' }
 #'
 #' @export
@@ -140,26 +156,48 @@ blda <- function(data, text_col, ntopics = 10,
   # Extract document-topic distributions
   doc_topics <- topicmodels::posterior(lda_model)$topics
 
-  # Create output data frame matching original document order
-  result_df <- as.data.frame(matrix(NA_real_, nrow = n_docs, ncol = ntopics))
-  colnames(result_df) <- paste0("Topic", 1:ntopics)
+  # Extract topic-word distributions (topics as rows, words as columns)
+  topic_words <- topicmodels::posterior(lda_model)$terms
+
+  # Get log-likelihood (extract from model slot for Gibbs)
+  log_lik <- lda_model@loglikelihood
+
+  # Create document-topic data frame matching original document order
+  theta <- as.data.frame(matrix(NA_real_, nrow = n_docs, ncol = ntopics))
+  colnames(theta) <- paste0("Topic", 1:ntopics)
+  rownames(theta) <- rownames(data)
 
   # Fill in values for non-empty documents
   non_empty_idx <- which(row_totals > 0)
-  result_df[non_empty_idx, ] <- doc_topics
+  theta[non_empty_idx, ] <- doc_topics
 
-  # Store additional info as attributes
-  attr(result_df, "ntopics") <- ntopics
-  attr(result_df, "terms") <- topicmodels::terms(lda_model, 10)
-  attr(result_df, "empty_docs") <- empty_docs
-  attr(result_df, "lda_model") <- lda_model
-  attr(result_df, "n_terms") <- ncol(dtm_for_lda)
+  # Convert topic_words to data frame
+  phi <- as.data.frame(topic_words)
+  rownames(phi) <- paste0("Topic", 1:ntopics)
 
-  class(result_df) <- c("blda", "data.frame")
+  # Get top terms
+  top_terms <- topicmodels::terms(lda_model, 10)
 
-  if (verbose) message("Done.")
+  # Build result list
+  result <- list(
+    theta = theta,
+    phi = phi,
+    dtm = dtm_for_lda,
+    loglik = log_lik,
+    terms = top_terms,
+    ntopics = ntopics,
+    n_terms = ncol(dtm_for_lda),
+    empty_docs = empty_docs,
+    model = lda_model
+  )
 
-  return(result_df)
+  class(result) <- c("blda", "list")
+
+  # Print output
+  print(result)
+
+  # Return invisibly
+  invisible(result)
 }
 
 
@@ -173,31 +211,27 @@ blda <- function(data, text_col, ntopics = 10,
 #' @export
 print.blda <- function(x, n_terms = 10, n_docs = 6, ...) {
 
-  ntopics <- attr(x, "ntopics")
-  n_total <- nrow(x)
-  empty <- attr(x, "empty_docs")
-  n_vocab <- attr(x, "n_terms")
+  n_total <- nrow(x$theta)
 
   cat("\nLDA Topic Model Results\n")
   cat(paste(rep("=", 50), collapse = ""), "\n\n")
 
-  cat("Documents:    ", n_total, "\n")
-  cat("Topics:       ", ntopics, "\n")
-  cat("Vocabulary:   ", n_vocab, " terms\n")
-  if (length(empty) > 0) {
-    cat("Empty docs:   ", length(empty), "\n")
+  cat("Documents:       ", n_total, "\n")
+  cat("Topics:          ", x$ntopics, "\n")
+  cat("Vocabulary:      ", x$n_terms, " terms\n")
+  if (length(x$empty_docs) > 0) {
+    cat("Empty docs:      ", length(x$empty_docs), "\n")
   }
+  cat("Log-likelihood: ", format(x$loglik, big.mark = ",", scientific = FALSE), "\n")
 
   cat("\n")
   cat(paste(rep("-", 50), collapse = ""), "\n")
   cat("Top terms per topic:\n")
   cat(paste(rep("-", 50), collapse = ""), "\n\n")
 
-  terms <- attr(x, "terms")
-  if (!is.null(terms)) {
-    # Get requested number of terms (up to what's available)
-    n_show <- min(n_terms, nrow(terms))
-    print(terms[1:n_show, , drop = FALSE], quote = FALSE)
+  if (!is.null(x$terms)) {
+    n_show <- min(n_terms, nrow(x$terms))
+    print(x$terms[1:n_show, , drop = FALSE], quote = FALSE)
   }
 
   cat("\n")
@@ -205,7 +239,7 @@ print.blda <- function(x, n_terms = 10, n_docs = 6, ...) {
   cat("Document-topic distributions (first ", min(n_docs, n_total), " rows):\n")
   cat(paste(rep("-", 50), collapse = ""), "\n\n")
 
-  preview <- utils::head(as.data.frame(x), n_docs)
+  preview <- utils::head(x$theta, n_docs)
   print(preview, digits = 3)
 
   invisible(x)
@@ -225,12 +259,11 @@ bldaterms <- function(x, n = 10) {
     stop("x must be a blda object")
   }
 
-  model <- attr(x, "lda_model")
-  if (is.null(model)) {
+  if (is.null(x$model)) {
     stop("LDA model not found in object")
   }
 
-  topicmodels::terms(model, n)
+  topicmodels::terms(x$model, n)
 }
 
 
@@ -239,6 +272,7 @@ bldaterms <- function(x, n = 10) {
 #' @param object A blda object (containing the fitted model)
 #' @param newdata A data frame with new documents
 #' @param text_col The name or index of the text column
+#' @param ... Additional arguments (ignored)
 #'
 #' @return A data frame with topic distributions for new documents
 #'
@@ -252,8 +286,7 @@ predict.blda <- function(object, newdata, text_col, ...) {
     stop("Package 'topicmodels' is required")
   }
 
-  model <- attr(object, "lda_model")
-  if (is.null(model)) {
+  if (is.null(object$model)) {
     stop("LDA model not found in object")
   }
 
@@ -274,10 +307,10 @@ predict.blda <- function(object, newdata, text_col, ...) {
 
   # Create DTM using same vocabulary as original model
   dtm <- tm::DocumentTermMatrix(corpus,
-                                control = list(dictionary = topicmodels::Terms(model)))
+                                control = list(dictionary = topicmodels::Terms(object$model)))
 
   # Get posterior
-  post <- topicmodels::posterior(model, dtm)
+  post <- topicmodels::posterior(object$model, dtm)
 
   result <- as.data.frame(post$topics)
   colnames(result) <- paste0("Topic", 1:ncol(result))
