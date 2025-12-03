@@ -27,9 +27,7 @@ blda(
 
 \item{remove_numbers}{Logical. Remove numbers from text? Default is TRUE.}
 
-\item{min_word_length}{Minimum word length to keep. Default is 3.}
-
-\item{min_doc_freq}{Minimum number of documents a term must appear in. Default is 2.
+\item{min_word_length}{Minimum word length to keep. Default is 3.
 Helps filter out typos and rare terms.}
 
 \item{seed}{Random seed for reproducibility. Default is 12345.}

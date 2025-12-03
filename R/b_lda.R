@@ -9,7 +9,6 @@
 #' @param remove_stopwords Logical. Remove common English stopwords? Default is TRUE.
 #' @param remove_numbers Logical. Remove numbers from text? Default is TRUE.
 #' @param min_word_length Minimum word length to keep. Default is 3.
-#' @param min_doc_freq Minimum number of documents a term must appear in. Default is 2.
 #'   Helps filter out typos and rare terms.
 #' @param seed Random seed for reproducibility. Default is 12345.
 #' @param verbose Logical. Print progress messages? Default is TRUE.
