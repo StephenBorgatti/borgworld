@@ -11,6 +11,7 @@ blda(
   remove_stopwords = TRUE,
   remove_numbers = TRUE,
   min_word_length = 3,
+  min_doc_freq = 2,
   seed = 12345,
   verbose = TRUE
 )
@@ -27,6 +28,9 @@ blda(
 \item{remove_numbers}{Logical. Remove numbers from text? Default is TRUE.}
 
 \item{min_word_length}{Minimum word length to keep. Default is 3.}
+
+\item{min_doc_freq}{Minimum number of documents a term must appear in. Default is 2.
+Helps filter out typos and rare terms.}
 
 \item{seed}{Random seed for reproducibility. Default is 12345.}
 
@@ -58,6 +62,7 @@ The function performs the following preprocessing steps:
 \item Remove numbers (optional)
 \item Remove English stopwords (optional)
 \item Remove short words
+\item Remove rare terms (appearing in fewer than min_doc_freq documents)
 \item Strip extra whitespace
 }
 }

@@ -49,7 +49,7 @@ devtools::load_all()   # Load it again
 # fetch changes
 system("git fetch origin")
 #merge changes from git branch learned from system()
-system("git merge origin/claude/document-bwordcount-function-01Jr8e32wzpVEVBg5aAG14Sy")
+system("git merge origin/claude/bfactor-matrix-size-check-01M7d7qFugsVMPWWBrFzF9T6")
 
 #push back after edits
 system("git push origin main")

@@ -9,6 +9,8 @@
 #' @param remove_stopwords Logical. Remove common English stopwords? Default is TRUE.
 #' @param remove_numbers Logical. Remove numbers from text? Default is TRUE.
 #' @param min_word_length Minimum word length to keep. Default is 3.
+#' @param min_doc_freq Minimum number of documents a term must appear in. Default is 2.
+#'   Helps filter out typos and rare terms.
 #' @param seed Random seed for reproducibility. Default is 12345.
 #' @param verbose Logical. Print progress messages? Default is TRUE.
 #'
@@ -33,6 +35,7 @@
 #'   \item Remove numbers (optional)
 #'   \item Remove English stopwords (optional)
 #'   \item Remove short words
+#'   \item Remove rare terms (appearing in fewer than min_doc_freq documents)
 #'   \item Strip extra whitespace
 #' }
 #'
@@ -65,6 +68,7 @@ blda <- function(data, text_col, ntopics = 10,
                  remove_stopwords = TRUE,
                  remove_numbers = TRUE,
                  min_word_length = 3,
+                 min_doc_freq = 2,
                  seed = 12345,
                  verbose = TRUE) {
 
@@ -117,6 +121,13 @@ blda <- function(data, text_col, ntopics = 10,
   # Remove words shorter than min_word_length
   if (min_word_length > 1) {
     terms_to_keep <- nchar(tm::Terms(dtm)) >= min_word_length
+    dtm <- dtm[, terms_to_keep]
+  }
+
+  # Remove terms appearing in fewer than min_doc_freq documents
+  if (min_doc_freq > 1) {
+    term_doc_counts <- slam::col_sums(dtm > 0)
+    terms_to_keep <- term_doc_counts >= min_doc_freq
     dtm <- dtm[, terms_to_keep]
   }
 
