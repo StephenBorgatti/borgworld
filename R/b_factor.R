@@ -114,7 +114,9 @@ breliability <- function(fa_result, data, cut = 0.4, use_rotated = TRUE) {
 #' eigenvalue table and formatted factor loadings with optional suppression of
 #' small values in rotated solutions. Includes reliability measures for each factor.
 #'
-#' @param data A data frame or matrix of observed variables
+#' @param data A data frame, matrix, or DocumentTermMatrix of observed variables.
+#'   DocumentTermMatrix objects (from tm/tidytext packages) are automatically
+#'   converted to matrix format.
 #' @param nfactors Maximum number of factors to retain for display. If NULL,
 #'   determined by mineigen criterion. Default is NULL.
 #' @param mineigen Minimum eigenvalue threshold for retaining factors. Factors
@@ -162,10 +164,20 @@ bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
     stop("Package 'psych' is required. Please install it.")
   }
 
-  # drop charater variables
+  # Handle DocumentTermMatrix and other sparse matrix types
+  if (inherits(data, "DocumentTermMatrix") || inherits(data, "simple_triplet_matrix")) {
+    data <- as.matrix(data)
+    message("DocumentTermMatrix converted to matrix for factor analysis")
+  }
+
+  # Convert matrix to data frame if needed
+  if (is.matrix(data)) {
+    data <- as.data.frame(data)
+  }
+
+  # drop character variables
   nvar <- ncol(data)
-  data <-  data |>
-    select(where(is.numeric))
+  data <- data[, sapply(data, is.numeric), drop = FALSE]
   if (nvar != ncol(data)) {
     print('Character variable removed')
   }
