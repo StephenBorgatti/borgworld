@@ -6,7 +6,8 @@
 #' Unlike R's built-in functions, this returns loadings as correlations
 #' between variables and components, and can optionally standardize scores.
 #'
-#' @param data A numeric matrix or data frame containing the variables to analyze
+#' @param data A numeric matrix or data frame containing the variables to analyze.
+#'   Non-numeric columns are automatically removed.
 #' @param max Integer; maximum number of components to retain.
 #'   Default is NULL (returns all components)
 #' @param mineigen Numeric; minimum eigenvalue for component retention.
@@ -15,6 +16,9 @@
 #' @param standardize_scores Logical; if TRUE (default), standardizes component
 #'   scores to have variance = 1 (matching Stata's default behavior).
 #'   If FALSE, returns raw scores with variance equal to eigenvalues.
+#' @param na_action How to handle missing values: "complete" (default) for listwise
+#'   deletion, "pairwise" for pairwise complete observations in correlation.
+#' @param verbose Logical; if TRUE, print messages about data cleaning.
 #'
 #' @return An object of class \code{bpca} containing:
 #' \item{eigenvalues}{Numeric vector of eigenvalues of the correlation matrix}
@@ -67,6 +71,9 @@
 #' # Run PCA with raw scores
 #' result_raw <- bpca(data, max = 3, standardize_scores = FALSE)
 #'
+#' # With data frame input (non-numeric columns automatically removed)
+#' result <- bpca(iris)  # Species column removed automatically
+#'
 #' @seealso
 #' \code{\link{prcomp}} for R's SVD-based PCA implementation,
 #' \code{\link{princomp}} for R's eigen-based PCA implementation,
@@ -81,18 +88,25 @@
 #' @importFrom stats cor sd
 #' @importFrom utils capture.output
 #' @export
-bpca <- function(data, max = NULL, mineigen = 1, standardize_scores = TRUE) {
-  # Convert to clean matrix
-  data <- bclean(data)
+bpca <- function(data, max = NULL, mineigen = 1, standardize_scores = TRUE,
+                 na_action = "complete", verbose = FALSE) {
+
+
+  # Use standardized input handling
+  data <- bprepare_data(data,
+                        na_action = na_action,
+                        numeric_only = TRUE,
+                        output_format = "data.frame",
+                        verbose = verbose)
+
+  # Convert to matrix for computations
   X <- as.matrix(data)
   n <- nrow(X)
   p <- ncol(X)
 
   # Get variable names
-  if (is.null(colnames(X))) {
-    colnames(X) <- paste0("Var", 1:p)
-  }
-  var_names <- colnames(X)
+  var_names <- bget_labels(X, dim = "cols", default_prefix = "Var")
+  colnames(X) <- var_names
 
   # Default to all components for initial calculation
   if (is.null(max)) {
@@ -166,49 +180,37 @@ bpca <- function(data, max = NULL, mineigen = 1, standardize_scores = TRUE) {
   communalities <- rowSums(loadings^2)
   names(communalities) <- var_names
 
-  # Create output tables
-  cat("===============================================\n")
-  cat("PCA RESULTS (Stata/SPSS Style Output)\n")
-  cat("===============================================\n\n")
+  # --- Print formatted output using shared utilities ---
 
-  # Eigenvalues table (show all eigenvalues)
-  cat("EIGENVALUES AND VARIANCE EXPLAINED\n")
-  cat("-----------------------------------\n")
-  eigen_table <- data.frame(
-    Component = paste0("PC", 1:length(all_eigenvalues)),
-    Eigenvalue = round(all_eigenvalues, 4),
-    Variance_Pct = round(100 * all_prop_variance, 2),
-    Cumulative_Pct = round(100 * all_cum_variance, 2)
-  )
-  print(eigen_table, row.names = FALSE)
-  cat("\n")
+  bprint_header("PCA RESULTS", subtitle = "Stata/SPSS Style Output")
 
-  # Kaiser criterion and retention info
+  # Print eigenvalue table using shared utility
+  bprint_eigenvalues(all_eigenvalues, threshold = mineigen)
+
+  # Additional info
   n_kaiser <- sum(all_eigenvalues > 1)
-  cat(paste("Components with eigenvalue > 1 (Kaiser criterion):", n_kaiser, "\n"))
-  cat(paste("Minimum eigenvalue threshold (mineigen):", mineigen, "\n"))
-  cat(paste("Components retained:", n_retained, "\n\n"))
+  cat("\nMinimum eigenvalue threshold (mineigen):", mineigen, "\n")
+  cat("Components retained:", n_retained, "\n")
 
-  # Loadings matrix (only retained components)
-  cat("COMPONENT LOADINGS (Variable-Component Correlations)\n")
-  cat("----------------------------------------------------\n")
-  cat(paste("Showing loadings for", n_retained, "retained components\n\n"))
-  loadings_df <- as.data.frame(loadings)
-  n_show <- min(10, p)
-  print(round(loadings_df[1:n_show, , drop = FALSE], 3))
-  if (p > 10) cat("... [", p - 10, " more variables]\n", sep = "")
-  cat("\n")
+  # Print loadings
+  bprint_section("Component Loadings (Variable-Component Correlations)")
+  cat("Showing loadings for", n_retained, "retained components\n\n")
+  bprint_loadings(loadings, max_vars = 15)
 
-  # Communalities (based on retained components)
-  cat("COMMUNALITIES (Variance Explained per Variable)\n")
-  cat("-----------------------------------------------\n")
-  cat(paste("Based on", n_retained, "retained components\n\n"))
+  # Print communalities
+  bprint_section("Communalities (Variance Explained per Variable)")
+  cat("Based on", n_retained, "retained components\n\n")
+
+  n_show <- min(15, p)
   comm_df <- data.frame(
     Variable = var_names[1:n_show],
-    Communality = round(communalities[1:n_show], 3)
+    Communality = communalities[1:n_show]
   )
-  print(comm_df, row.names = FALSE)
-  if (p > 10) cat("... [", p - 10, " more variables]\n", sep = "")
+  bprint_table(comm_df)
+  if (p > n_show) {
+    cat("... [", p - n_show, " more variables]\n", sep = "")
+  }
+
   cat("\n")
 
   # Return results with all names properly set
@@ -229,9 +231,35 @@ bpca <- function(data, max = NULL, mineigen = 1, standardize_scores = TRUE) {
     correlation_matrix = R,
     standardized_data = X_std,
     retained = n_retained,
-    mineigen = mineigen
+    mineigen = mineigen,
+    n = n,
+    p = p
   )
 
   class(result) <- "bpca"
   invisible(result)
+}
+
+
+#' Print method for bpca objects
+#'
+#' @param x A bpca object
+#' @param ... Additional arguments (unused)
+#' @export
+print.bpca <- function(x, ...) {
+  cat("\nPCA Results (Stata/SPSS Style)\n")
+  cat("==============================\n")
+  cat("Observations:", x$n, "\n")
+  cat("Variables:", x$p, "\n")
+  cat("Components retained:", x$retained, "\n")
+  cat("Mineigen threshold:", x$mineigen, "\n\n")
+
+  cat("Eigenvalues (retained components):\n")
+  print(round(x$eigenvalues, 4))
+  cat("\n")
+
+  cat("Component Loadings (first few variables):\n")
+  print(round(head(x$loadings, 10), 3))
+
+  invisible(x)
 }

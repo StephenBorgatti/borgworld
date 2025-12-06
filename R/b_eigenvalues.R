@@ -3,8 +3,10 @@
 #' Efficiently extracts eigenvalues from a dataset or correlation matrix.
 #' For large datasets (e.g., document-by-word matrices), uses SVD on the
 #' column-standardized matrix to avoid computing the full correlation matrix.
+#' Accepts both data frames and matrices as input.
 #'
-#' @param x A data frame, matrix, or correlation matrix.
+#' @param x A data frame, matrix, or correlation matrix. Non-numeric columns
+#'   are automatically removed from data frames.
 #' @param use Character string specifying how to handle missing values.
 #'   Options are "complete" (listwise deletion), "pairwise" (pairwise complete
 #'   observations). Default is "complete".
@@ -12,6 +14,7 @@
 #'   rather than computing the correlation matrix when input is raw data.
 #'   This is much faster for wide matrices (many columns).
 #' @param tol Tolerance for determining matrix symmetry. Default is 1e-10.
+#' @param verbose Logical; if TRUE, print messages about data cleaning.
 #'
 #' @return An object of class "beigenvalues" containing:
 #'   \item{eigenvalues}{A data frame with columns: Component, Eigenvalue,
@@ -22,33 +25,28 @@
 #'   \item{method}{Either "eigen" or "svd"}
 #'
 #' @examples
-#' # From raw data
+#' # From raw data (data frame)
 #' beigenvalues(mtcars)
+#'
+#' # From raw data (matrix)
+#' beigenvalues(as.matrix(mtcars))
 #'
 #' # From correlation matrix
 #' beigenvalues(cor(mtcars))
 #'
+#' # With mixed data types (non-numeric columns automatically removed)
+#' beigenvalues(iris)
+#'
 #' @export
-beigenvalues <- function(x, use = "complete", efficient = TRUE, tol = 1e-10) {
+beigenvalues <- function(x, use = "complete", efficient = TRUE, tol = 1e-10,
+                         verbose = FALSE) {
 
-  # Convert to matrix if data frame
-  if (is.data.frame(x)) {
-    # Select only numeric columns
-    numeric_cols <- sapply(x, is.numeric)
-    if (sum(numeric_cols) < ncol(x)) {
-      dropped <- names(x)[!numeric_cols]
-      message("Dropped non-numeric columns: ", paste(dropped, collapse = ", "))
-    }
-    x <- as.matrix(x[, numeric_cols, drop = FALSE])
-  }
-
-  x <- as.matrix(x)
-
-  # Check if input appears to be a correlation matrix
-  is_cormat <- .is_correlation_matrix(x, tol)
+  # Check if input appears to be a correlation matrix BEFORE any transformation
+  is_cormat <- bcheck_cormat(x, tol = tol)
 
   if (is_cormat) {
     # Direct eigendecomposition of correlation matrix
+    x <- as.matrix(x)
     eig <- eigen(x, symmetric = TRUE, only.values = TRUE)
     eigenvalues <- eig$values
     n <- NA
@@ -56,18 +54,12 @@ beigenvalues <- function(x, use = "complete", efficient = TRUE, tol = 1e-10) {
     input_type <- "correlation"
     method <- "eigen"
   } else {
-    # Raw data: compute eigenvalues efficiently
-    use <- match.arg(use, c("complete", "pairwise"))
-
-    # Handle missing values
-    if (use == "complete") {
-      complete_rows <- complete.cases(x)
-      if (sum(complete_rows) < nrow(x)) {
-        n_dropped <- nrow(x) - sum(complete_rows)
-        message("Removed ", n_dropped, " rows with missing values")
-      }
-      x <- x[complete_rows, , drop = FALSE]
-    }
+    # Raw data: use standardized input handling
+    x <- bprepare_data(x,
+                       na_action = if (use == "complete") "complete" else "pairwise",
+                       numeric_only = TRUE,
+                       output_format = "matrix",
+                       verbose = verbose)
 
     n <- nrow(x)
     p <- ncol(x)
@@ -158,43 +150,26 @@ beigenvalues <- function(x, use = "complete", efficient = TRUE, tol = 1e-10) {
 }
 
 
-#' Check if matrix appears to be a correlation matrix
-#' @noRd
-.is_correlation_matrix <- function(x, tol = 1e-10) {
-  # Must be square
-  if (nrow(x) != ncol(x)) return(FALSE)
-
-  # Must be symmetric
-  if (!isSymmetric(x, tol = tol)) return(FALSE)
-
-  # Diagonal should be 1s (or very close)
-  if (any(abs(diag(x) - 1) > tol)) return(FALSE)
-
-  # Row names should match column names (if present)
-  if (!is.null(rownames(x)) && !is.null(colnames(x))) {
-    if (!identical(rownames(x), colnames(x))) return(FALSE)
-  }
-
-  # Values should be in [-1, 1] range (with tolerance)
-  if (any(x < -1 - tol) || any(x > 1 + tol)) return(FALSE)
-
-  TRUE
-}
-
-
 #' Print method for beigenvalues
+#' @param x A beigenvalues object
+#' @param digits Number of decimal places
+#' @param n Number of components to display (NULL for auto)
+#' @param ... Additional arguments (unused)
 #' @export
 print.beigenvalues <- function(x, digits = 4, n = NULL, ...) {
 
-  cat("\nEigenvalue Decomposition\n")
-  cat(paste(rep("-", 50), collapse = ""), "\n")
+  bprint_header("EIGENVALUE DECOMPOSITION")
 
   if (x$input_type == "data") {
-    cat("Observations:", x$n, "   Variables:", x$p, "\n")
+    bprint_info(
+      "Observations" = x$n,
+      "Variables" = x$p
+    )
   } else {
-    cat("Variables:", x$p, "   (input was correlation matrix)\n")
+    bprint_info("Variables" = x$p)
+    cat("(Input was correlation matrix)\n")
   }
-  cat("Method:", ifelse(x$method == "svd", "SVD of standardized data", "Eigen decomposition"), "\n\n")
+  cat("Method:", ifelse(x$method == "svd", "SVD of standardized data", "Eigen decomposition"), "\n")
 
   # Determine how many rows to show
   df <- x$eigenvalues
@@ -210,6 +185,9 @@ print.beigenvalues <- function(x, digits = 4, n = NULL, ...) {
     }
   }
   n <- min(n, k)
+
+  # Print using shared utility
+  bprint_section("Eigenvalues")
 
   # Format the table
   show_df <- df[1:n, ]
@@ -236,16 +214,18 @@ print.beigenvalues <- function(x, digits = 4, n = NULL, ...) {
                     w_pct, "Percent",
                     w_cum, "Cumulative")
   cat(header, "\n")
-  cat(paste(rep("-", nchar(header)), collapse = ""), "\n")
+  cat(strrep("-", nchar(header)), "\n")
 
   # Rows
   for (i in 1:n) {
-    row <- sprintf("%*d  %*s  %*s  %*s  %*s",
+    marker <- if (show_df$Eigenvalue[i] >= 1) "*" else ""
+    row <- sprintf("%*d  %*s  %*s  %*s  %*s%s",
                    w_comp, show_df$Component[i],
                    w_eig, fmt_eigenvalue[i],
                    w_ratio, fmt_ratio[i],
                    w_pct, fmt_percent[i],
-                   w_cum, fmt_cumulative[i])
+                   w_cum, fmt_cumulative[i],
+                   marker)
     cat(row, "\n")
   }
 
@@ -253,7 +233,9 @@ print.beigenvalues <- function(x, digits = 4, n = NULL, ...) {
     cat("... (", k - n, " more components)\n", sep = "")
   }
 
-  cat("\n")
+  # Summary
+  n_ge1 <- sum(df$Eigenvalue >= 1)
+  cat("\n* Components with eigenvalue >= 1:", n_ge1, "\n")
 
   invisible(x)
 }

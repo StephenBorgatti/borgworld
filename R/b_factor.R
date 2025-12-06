@@ -15,7 +15,7 @@
 #'
 #' @export
 breliability <- function(fa_result, data, cut = 0.4, use_rotated = TRUE) {
-  if (!require("psych", quietly = TRUE)) {
+  if (!requireNamespace("psych", quietly = TRUE)) {
     stop("Package 'psych' is required. Please install it.")
   }
 
@@ -116,7 +116,7 @@ breliability <- function(fa_result, data, cut = 0.4, use_rotated = TRUE) {
 #'
 #' @param data A data frame, matrix, or DocumentTermMatrix of observed variables.
 #'   DocumentTermMatrix objects (from tm/tidytext packages) are automatically
-#'   converted to matrix format.
+#'   converted to matrix format. Non-numeric columns are automatically removed.
 #' @param nfactors Maximum number of factors to retain for display. If NULL,
 #'   determined by mineigen criterion. Default is NULL.
 #' @param mineigen Minimum eigenvalue threshold for retaining factors. Factors
@@ -128,8 +128,11 @@ breliability <- function(fa_result, data, cut = 0.4, use_rotated = TRUE) {
 #'   options: "ml" (maximum likelihood), "minres" (minimum residual), "wls"
 #'   (weighted least squares), "gls" (generalized least squares).
 #' @param cut Threshold for suppressing small loadings in rotated solution.
-#'   Loadings with absolute value below this are not displayed. Default is 0.3.
+#'   Loadings with absolute value below this are not displayed. Default is 0.4.
 #' @param n.obs Number of observations. If NULL, determined from nrow(data).
+#' @param na_action How to handle missing values: "complete" (default) for listwise
+#'   deletion, "pairwise" for pairwise complete observations.
+#' @param verbose Logical; if TRUE, print messages about data cleaning.
 #' @param ... Additional arguments passed to psych::fa()
 #'
 #' @return Invisibly returns the psych::fa object for further analysis
@@ -158,29 +161,28 @@ breliability <- function(fa_result, data, cut = 0.4, use_rotated = TRUE) {
 #'
 #' @export
 bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
-                    fm = "pa", cut = 0.4, n.obs = NULL, ...) {
+                    fm = "pa", cut = 0.4, n.obs = NULL,
+                    na_action = "complete", verbose = FALSE, ...) {
+
   # Load required package
-  if (!require("psych", quietly = TRUE)) {
+  if (!requireNamespace("psych", quietly = TRUE)) {
     stop("Package 'psych' is required. Please install it.")
   }
 
   # Handle DocumentTermMatrix and other sparse matrix types
   if (inherits(data, "DocumentTermMatrix") || inherits(data, "simple_triplet_matrix")) {
     data <- as.matrix(data)
-    message("DocumentTermMatrix converted to matrix for factor analysis")
+    if (verbose) message("DocumentTermMatrix converted to matrix for factor analysis")
   }
 
-  # Convert matrix to data frame if needed
-  if (is.matrix(data)) {
-    data <- as.data.frame(data)
-  }
+  # Use standardized input handling
+  data <- bprepare_data(data,
+                        na_action = na_action,
+                        numeric_only = TRUE,
+                        output_format = "data.frame",
+                        verbose = verbose)
 
-  # drop character variables
-  nvar <- ncol(data)
-  data <- data[, sapply(data, is.numeric), drop = FALSE]
-  if (nvar != ncol(data)) {
-    print('Character variable removed')
-  }
+  n_vars <- ncol(data)
 
   # Compute correlation matrix and eigenvalues once
   cor_mat <- cor(data, use = "pairwise.complete.obs")
@@ -232,122 +234,79 @@ bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
   }
 
   # Get number of parameters for retained factors
-  n_vars <- ncol(data)
   n_params <- retained_factors * n_vars - retained_factors * (retained_factors - 1) / 2
 
-  # Print header
-  cat("\nFactor analysis/correlation\n")
-  cat(sprintf("    Method: %s\n",
-              switch(fm,
-                     "pa" = "principal factors",
-                     "ml" = "maximum likelihood",
-                     "minres" = "minimum residual",
-                     "wls" = "weighted least squares",
-                     "gls" = "generalized least squares",
-                     fm)))
+  # --- Print formatted output using shared utilities ---
 
+  bprint_header("FACTOR ANALYSIS")
+
+  # Print method info
+  method_name <- switch(fm,
+                        "pa" = "principal factors",
+                        "ml" = "maximum likelihood",
+                        "minres" = "minimum residual",
+                        "wls" = "weighted least squares",
+                        "gls" = "generalized least squares",
+                        fm)
   rotation_name <- if (rotate == "none") "(unrotated)" else paste0("(", rotate, ")")
-  cat(sprintf("    Rotation: %s\n", rotation_name))
 
-  cat(sprintf("%50s = %10d\n", "Number of obs", n.obs))
-  cat(sprintf("%50s = %10d\n", "Retained factors", retained_factors))
-  cat(sprintf("%50s = %10d\n", "Number of params", n_params))
+  bprint_info(
+    "Method" = method_name,
+    "Rotation" = rotation_name,
+    "Number of obs" = n.obs,
+    "Retained factors" = retained_factors,
+    "Number of params" = n_params
+  )
 
   # Print correlation matrix (only if smaller than 26x26)
   if (n_vars < 26) {
-    cat("\n")
-    cat(strrep("=", 79))
-    cat("\n")
-    cat("Correlation Matrix:\n")
-    cat(strrep("=", 79))
-    cat("\n\n")
+    bprint_section("Correlation Matrix")
     print(round(cor_mat, 3))
   }
 
-  # Print eigenvalue table for ALL eigenvalues from correlation matrix
-  cat("\n")
-  cat(strrep("-", 79))
-  cat("\n")
-  cat(sprintf("    %-10s %10s %12s %15s %12s\n",
-              "Factor", "Eigenvalue", "Difference", "Proportion", "Cumulative"))
-  cat(strrep("-", 79))
-  cat("\n")
-
-  # Use all eigenvalues from correlation matrix
-  differences <- c(diff(all_eigenvalues), NA)
-  total_var <- sum(all_eigenvalues)
-  proportions <- all_eigenvalues / total_var
-  cumulative <- cumsum(proportions)
-
-  # Display all eigenvalues, but only up to ncol(data)
-  n_display <- length(all_eigenvalues)
-  for (i in 1:n_display) {
-    diff_str <- if (is.na(differences[i])) "." else sprintf("%10.5f", differences[i])
-    cat(sprintf("    Factor%-2d   %10.5f %12s %15.4f %12.4f\n",
-                i, all_eigenvalues[i], diff_str, proportions[i], cumulative[i]))
-  }
-  cat(strrep("-", 79))
-  cat("\n")
+  # Print eigenvalue table
+  bprint_eigenvalues(all_eigenvalues, threshold = mineigen)
 
   # Print LR test if available (for ML method)
   if (fm == "ml" && !is.null(fa_result$STATISTIC)) {
-    cat(sprintf("LR test: independent vs. saturated:  chi2(%d) = %7.2f Prob>chi2 = %.4f\n",
-                fa_result$dof, fa_result$STATISTIC, fa_result$PVAL))
+    cat(sprintf("\nLR test: independent vs. saturated: chi2(%d) = %.2f, p = %s\n",
+                fa_result$dof, fa_result$STATISTIC, bformat_pval(fa_result$PVAL, width = 0)))
   }
-
-  # Calculate maximum variable name length for proper column alignment
-  var_names <- rownames(fa_result$loadings)
-  max_var_length <- max(nchar(var_names), nchar("Variable"))
 
   # Print unrotated factor loadings (retained factors only)
-  cat("\nFactor loadings (pattern matrix) and unique variances\n\n")
-
-  # Adjust line width based on variable name length
-  line_width <- max(70, 4 + max_var_length + retained_factors * 10 + 13)
-  cat(strrep("-", line_width))
-  cat("\n")
-
-  loading_header <- sprintf(paste0("    %-", max_var_length, "s"), "Variable")
-  for (i in 1:retained_factors) {
-    loading_header <- paste0(loading_header, sprintf(" %9s", paste0("Factor", i)))
-  }
-  loading_header <- paste0(loading_header, sprintf(" %12s", "Uniqueness"))
-  cat(loading_header, "\n")
-  cat(strrep("-", line_width))
-  cat("\n")
+  bprint_section("Factor Loadings (Pattern Matrix) and Unique Variances")
 
   loadings_mat <- fa_result$loadings[1:n_vars, 1:retained_factors, drop = FALSE]
   uniqueness <- fa_result$uniquenesses
 
+  # Build loading table with uniqueness
+  var_names <- rownames(loadings_mat)
+  max_var_length <- max(nchar(var_names), nchar("Variable"))
+
+  # Header
+  header <- sprintf("%-*s", max_var_length, "Variable")
+  for (i in 1:retained_factors) {
+    header <- paste0(header, sprintf(" %9s", paste0("Factor", i)))
+  }
+  header <- paste0(header, sprintf(" %12s", "Uniqueness"))
+  cat(header, "\n")
+  cat(strrep("-", nchar(header)), "\n")
+
+  # Rows
   for (i in 1:n_vars) {
-    row_str <- sprintf(paste0("    %-", max_var_length, "s"), rownames(loadings_mat)[i])
+    row_str <- sprintf("%-*s", max_var_length, var_names[i])
     for (j in 1:retained_factors) {
       row_str <- paste0(row_str, sprintf(" %9.4f", loadings_mat[i, j]))
     }
     row_str <- paste0(row_str, sprintf(" %12.4f", uniqueness[i]))
     cat(row_str, "\n")
   }
-  cat(strrep("-", line_width))
-  cat("\n")
+  cat(strrep("-", nchar(header)), "\n")
 
   # Print rotated factor loadings (sorted and with cutoff) - retained factors only
-  # No uniqueness column for rotated loadings
   if (rotate != "none") {
-    cat("\nRotated factor loadings (pattern matrix)\n\n")
-
-    # Adjust line width for rotated section (no uniqueness column)
-    line_width_rot <- max(70, 4 + max_var_length + retained_factors * 10)
-    cat(strrep("-", line_width_rot))
-    cat("\n")
-
-    # Header without uniqueness column
-    loading_header_rot <- sprintf(paste0("    %-", max_var_length, "s"), "Variable")
-    for (i in 1:retained_factors) {
-      loading_header_rot <- paste0(loading_header_rot, sprintf(" %9s", paste0("Factor", i)))
-    }
-    cat(loading_header_rot, "\n")
-    cat(strrep("-", line_width_rot))
-    cat("\n")
+    bprint_section("Rotated Factor Loadings (Pattern Matrix)")
+    cat("Loadings below", cut, "suppressed\n\n")
 
     # Sort variables by their maximum absolute loading
     loadings_rot <- fa_result$loadings[1:n_vars, 1:retained_factors, drop = FALSE]
@@ -358,50 +317,29 @@ bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
     sort_order <- order(which_factor, -max_loadings)
     loadings_sorted <- loadings_rot[sort_order, , drop = FALSE]
 
-    for (i in 1:n_vars) {
-      row_str <- sprintf(paste0("    %-", max_var_length, "s"), rownames(loadings_sorted)[i])
-      for (j in 1:retained_factors) {
-        val <- loadings_sorted[i, j]
-        if (abs(val) < cut) {
-          row_str <- paste0(row_str, sprintf(" %9s", ""))
-        } else {
-          row_str <- paste0(row_str, sprintf(" %9.4f", val))
-        }
-      }
-      cat(row_str, "\n")
-    }
-    cat(strrep("-", line_width_rot))
-    cat("\n")
+    bprint_loadings(loadings_sorted, cut = cut, max_vars = n_vars)
   }
 
   # Calculate and print reliability measures
-  cat("\n")
-  cat(strrep("=", 79))
-  cat("\n")
-  cat("Factor Reliability Measures\n")
-  cat(strrep("=", 79))
-  cat("\n")
+  bprint_header("Factor Reliability Measures")
 
   reliability_df <- breliability(fa_result, data, cut = cut,
                                  use_rotated = (rotate != "none"))
 
-  # Print formatted table header
-  cat(sprintf("\n    %-8s %8s %10s %12s %10s\n",
+  # Print formatted table
+  cat(sprintf("\n%-8s %8s %10s %12s %10s\n",
               "Factor", "N Items", "Alpha", "Std Alpha", "Omega"))
-  cat(strrep("-", 79))
-  cat("\n")
+  cat(strrep("-", 50), "\n")
 
-  # Print each row
   for (i in 1:nrow(reliability_df)) {
-    cat(sprintf("    %-8d %8d %10s %12s %10s\n",
+    cat(sprintf("%-8d %8d %10s %12s %10s\n",
                 reliability_df$factor[i],
                 reliability_df$n_items[i],
                 if (is.na(reliability_df$alpha[i])) "-" else sprintf("%.4f", reliability_df$alpha[i]),
                 if (is.na(reliability_df$std_alpha[i])) "-" else sprintf("%.4f", reliability_df$std_alpha[i]),
                 if (is.na(reliability_df$omega_t[i])) "-" else sprintf("%.4f", reliability_df$omega_t[i])))
   }
-  cat(strrep("-", 79))
-  cat("\n")
+  cat(strrep("-", 50), "\n")
 
   # Print items for each factor
   cat("\nItems by Factor:\n")
@@ -414,8 +352,7 @@ bfactor <- function(data, nfactors = NULL, mineigen = 1, rotate = "varimax",
   }
 
   cat("\n")
-  cat(strrep("=", 79))
-  cat("\n")
+  bprint_sep(char = "=")
 
   # Return the fa object invisibly
   invisible(fa_result)

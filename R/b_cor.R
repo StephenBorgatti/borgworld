@@ -1,5 +1,9 @@
 #' Correlation with pairwise complete obs and auto numeric selection
 #'
+#' @description
+#' Computes correlation matrix with automatic numeric column selection and
+#' flexible missing value handling. Accepts both data frames and matrices.
+#'
 #' @param x A vector, matrix, data.frame, or tibble.
 #' @param y Optional vector/matrix/data.frame/tibble for cross-correlation.
 #' @param dim Character string specifying whether to compute correlations between
@@ -7,6 +11,7 @@
 #'   (case-insensitive), so "r", "row", "rows" all work for rows, and "c", "col",
 #'   "cols", "columns" all work for columns. This parameter is ignored when y is provided.
 #' @param use Missing-data handling; default "pairwise.complete.obs".
+#' @param verbose Logical; if TRUE, print messages about data cleaning.
 #' @param ... Passed to [stats::cor()] (e.g., method = "spearman").
 #' @return Correlation vector/matrix as in [stats::cor()].
 #' @details
@@ -14,6 +19,9 @@
 #' between rows instead of columns. This is equivalent to cor(t(x)) but preserves
 #' row names in the output. The dim parameter only affects x and is ignored when
 #' y is provided (cross-correlation always uses the data as-is).
+#'
+#' Non-numeric columns are automatically removed from data frames with a warning.
+#'
 #' @examples
 #' # Create sample data
 #' mat <- matrix(rnorm(20), nrow = 5, ncol = 4)
@@ -42,7 +50,8 @@
 #' bcor(df, dim = "rows")  # Correlations between observations
 #'
 #' @export
-bcor <- function(x, y = NULL, dim = "columns", use = "pairwise.complete.obs", ...) {
+bcor <- function(x, y = NULL, dim = "columns", use = "pairwise.complete.obs",
+                 verbose = FALSE, ...) {
   # Parse dim argument (only used when y is NULL)
   if (is.null(y)) {
     dim <- tolower(dim)
@@ -58,12 +67,16 @@ bcor <- function(x, y = NULL, dim = "columns", use = "pairwise.complete.obs", ..
     compute_rows <- FALSE
   }
 
-  # Helper function to select numeric columns
-  select_numeric <- function(obj) {
-    if (is.data.frame(obj)) {
-      keep <- vapply(obj, is.numeric, logical(1))
-      obj  <- obj[ , keep, drop = FALSE]
-      if (ncol(obj) == 0L) stop("No numeric columns in data frame.", call. = FALSE)
+  # Helper function to select numeric columns using standardized input handling
+  select_numeric <- function(obj, verbose = FALSE) {
+    if (is.data.frame(obj) || is.matrix(obj)) {
+      # Use bprepare_data for consistent handling
+      obj <- bprepare_data(obj,
+                           na_action = "none",  # Let cor() handle NAs
+                           numeric_only = TRUE,
+                           output_format = "data.frame",
+                           verbose = verbose)
+      if (ncol(obj) == 0L) stop("No numeric columns in data.", call. = FALSE)
     } else if (is.vector(obj) && !is.numeric(obj)) {
       stop("Vector input must be numeric.", call. = FALSE)
     }
@@ -71,9 +84,9 @@ bcor <- function(x, y = NULL, dim = "columns", use = "pairwise.complete.obs", ..
   }
 
   # Select numeric columns
-  x <- select_numeric(x)
+  x <- select_numeric(x, verbose)
   if (!is.null(y)) {
-    y <- select_numeric(y)
+    y <- select_numeric(y, verbose)
   }
 
   # Transpose x if computing correlations between rows (only when y is NULL)
@@ -92,13 +105,11 @@ bcor <- function(x, y = NULL, dim = "columns", use = "pairwise.complete.obs", ..
       rownames(result) <- original_names
       colnames(result) <- original_names
     }
-    #result <- round(result,3)
 
     return(result)
   }
 
   # Standard correlation (between columns)
   result <- stats::cor(x = x, y = y, use = use, ...)
-  #result <- round(result,3)
   return(result)
 }

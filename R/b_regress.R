@@ -1,19 +1,26 @@
 #' Stata-style regression output for linear models
 #'
-#' Produces regression output that mimics Stata's regress command format
+#' Produces regression output that mimics Stata's regress command format.
+#' Accepts both data frames and matrices as input.
 #'
-#' @param data A data frame containing the variables
-#' @param formula A formula object specifying the model
+#' @param data A data frame or matrix containing the variables
+#' @param formula A formula object or character string specifying the model
 #' @param robust Logical, whether to use robust standard errors (requires sandwich package)
+#' @param alpha Significance level for confidence intervals (default: 0.05)
+#' @param vif Logical, whether to print VIF table (default: TRUE for multiple predictors)
+#' @param verbose Logical; if TRUE, print messages about data cleaning
 #'
 #' @return Invisibly returns the fitted lm model object
 #'
-#' @importFrom stats lm coef confint nobs resid pf pt qt
+#' @importFrom stats lm coef confint nobs resid pf pt qt fitted effects model.matrix model.frame model.response complete.cases
 #' @export
 #'
 #' @examples
 #' # Basic regression
 #' bregress(mtcars, mpg ~ wt + hp)
+#'
+#' # With character formula
+#' bregress(mtcars, "mpg ~ wt + hp")
 #'
 #' # With piping
 #' library(dplyr)
@@ -23,11 +30,19 @@
 #' \dontrun{
 #' bregress(mtcars, mpg ~ wt + hp, robust = TRUE)
 #' }
-bregress <- function(data, formula, robust = FALSE) {
-  # Convert string to formula if needed
-  if (is.character(formula)) {
-    formula <- as.formula(formula)
+bregress <- function(data, formula, robust = FALSE, alpha = 0.05,
+                     vif = TRUE, verbose = FALSE) {
+
+  # Handle matrix input - convert to data frame
+  if (is.matrix(data)) {
+    data <- as.data.frame(data, stringsAsFactors = FALSE)
+    if (verbose) message("Converted matrix to data.frame")
   }
+
+  # Parse and validate formula
+  parsed <- bparse_formula(formula)
+  bvalidate_formula(formula, data)
+  formula <- parsed$formula
 
   # Fit the model
   model <- lm(formula, data = data, na.action = na.exclude)
@@ -53,13 +68,14 @@ bregress <- function(data, formula, robust = FALSE) {
     )
 
     # Recalculate confidence intervals with robust SE
+    t_crit <- qt(1 - alpha/2, model$df.residual)
     conf_int <- cbind(
-      coef_vals - qt(0.975, model$df.residual) * robust_se,
-      coef_vals + qt(0.975, model$df.residual) * robust_se
+      coef_vals - t_crit * robust_se,
+      coef_vals + t_crit * robust_se
     )
   } else {
     coef_summary <- summary(model)$coefficients
-    conf_int <- confint(model, level = 0.95)
+    conf_int <- confint(model, level = 1 - alpha)
   }
 
   # Extract basic information
@@ -95,9 +111,13 @@ bregress <- function(data, formula, robust = FALSE) {
   coef_names <- rownames(coef_summary)
   coef_names[coef_names == "(Intercept)"] <- "_cons"
 
+  # --- Print formatted output ---
+
   # Print header
   if (robust) {
-    cat("\nLinear regression with robust standard errors\n")
+    bprint_header("LINEAR REGRESSION", subtitle = "Robust Standard Errors (HC1)")
+  } else {
+    bprint_header("LINEAR REGRESSION")
   }
 
   # Format the SS, DF, and MS values first to determine needed widths
@@ -123,7 +143,7 @@ bregress <- function(data, formula, robust = FALSE) {
   header <- sprintf("%*s | %*s %*s %*s   Number of obs   = %9d",
                     w_src, "Source", w_ss, "SS", w_df, "df", w_ms, "MS", n)
   cat("\n", header, "\n", sep = "")
-  cat(paste0(rep("-", nchar(header)), collapse = ""), "\n", sep = "")
+  cat(strrep("-", nchar(header)), "\n", sep = "")
 
   row_fmt <- function(src, ss, df, ms, tail = "") {
     ss_s <- formatC(ss, digits = 7, format = "g")
@@ -144,7 +164,7 @@ bregress <- function(data, formula, robust = FALSE) {
 
   # Fixed separator line - align "+" with "|" symbols
   sep <- sprintf("%*s+%s", w_src + 1, "",
-                 paste0(rep("-", w_ss + 1 + w_df + 1 + w_ms + 1), collapse = ""))
+                 strrep("-", w_ss + 1 + w_df + 1 + w_ms + 1))
   cat(sep, sprintf("   Adj R-squared   = %10.4f", adj_r_squared), "\n", sep = "")
 
   cat(row_fmt("Total",    ss_total,  df_total, ss_total/df_total,
@@ -154,70 +174,27 @@ bregress <- function(data, formula, robust = FALSE) {
   cat("\n")
 
   # Determine dependent variable name
-  dep_var <- as.character(formula[[2]])
+  dep_var <- parsed$response
 
   # Find the longest variable name to determine column width
-  all_var_names <- coef_names
-  max_var_length <- max(nchar(all_var_names), nchar(dep_var))
-  # Use at least the same width as the "Source" column (12 chars) for consistency
+  max_var_length <- max(nchar(coef_names), nchar(dep_var))
   var_col_width <- max(12, max_var_length)
 
   # Header for coefficient table with properly aligned columns
-  header_line <- sprintf("%*s | Coefficient  Std. err.      t    P>|t|     [95%% conf. interval]",
-                         var_col_width, dep_var)
+  ci_label <- sprintf("[%.0f%% conf. interval]", 100 * (1 - alpha))
+  header_line <- sprintf("%*s | Coefficient  Std. err.      t    P>|t|     %s",
+                         var_col_width, dep_var, ci_label)
 
-  # Calculate the exact width based on the header line
   total_width <- nchar(header_line)
-
-  # Create separator lines that match the header width exactly
-  separator_line <- paste0(rep("-", total_width), collapse = "")
+  separator_line <- strrep("-", total_width)
   cat(separator_line, "\n")
   cat(header_line, "\n", sep = "")
 
   # Separator line between header and data
-  sep_line <- paste0(paste0(rep("-", var_col_width), collapse = ""),
-                     "+",
-                     paste0(rep("-", total_width - var_col_width - 1), collapse = ""))
+  sep_line <- paste0(strrep("-", var_col_width), "+", strrep("-", total_width - var_col_width - 1))
   cat(sep_line, "\n")
 
-  # Helper function to format numbers that might need scientific notation
-  format_coef <- function(x, width = 11) {
-    # Determine the best format based on the magnitude
-    if (is.na(x) || is.infinite(x)) {
-      formatted <- sprintf("%*s", width, "NA")
-    } else if (abs(x) < 1e-4 && x != 0) {
-      # Very small numbers: use scientific notation
-      formatted <- sprintf("%.2e", x)
-    } else if (abs(x) >= 1e7) {
-      # Very large numbers: use scientific notation
-      formatted <- sprintf("%.2e", x)
-    } else if (abs(x) >= 10000) {
-      # Large numbers: fewer decimal places
-      formatted <- sprintf("%.1f", x)
-    } else if (abs(x) >= 100) {
-      # Medium-large numbers
-      formatted <- sprintf("%.3f", x)
-    } else if (abs(x) >= 10) {
-      # Medium numbers
-      formatted <- sprintf("%.4f", x)
-    } else if (abs(x) >= 1) {
-      # Small-medium numbers
-      formatted <- sprintf("%.5f", x)
-    } else {
-      # Small numbers but not tiny
-      formatted <- sprintf("%.6f", x)
-    }
-
-    # If it's still too wide, force scientific notation
-    if (nchar(formatted) > width) {
-      formatted <- sprintf("%.2e", x)
-    }
-
-    # Right-align in the field
-    sprintf("%*s", width, formatted)
-  }
-
-  # Print each coefficient row with better spacing
+  # Print each coefficient row
   for (i in 1:length(coef_names)) {
     var_name <- coef_names[i]
 
@@ -228,27 +205,27 @@ bregress <- function(data, formula, robust = FALSE) {
     ci_low <- conf_int[i, 1]
     ci_high <- conf_int[i, 2]
 
-    # Handle very small p-values
-    if (p_val < 0.0005) {
-      p_str <- "  0.000"
-    } else {
-      p_str <- sprintf("%7.3f", p_val)
-    }
+    # Format p-value
+    p_str <- bformat_pval(p_val, width = 7)
 
-    # Print with consistent column positions matching the header
-    cat(sprintf("%*s", var_col_width, var_name), " | ",
-        format_coef(coef_val, 10), "  ",  # Coefficient column
-        format_coef(se_val, 9), "  ",      # Std. err. column
-        sprintf("%6.2f", t_val), "  ",     # t column
-        p_str, "    ",                      # P>|t| column
-        format_coef(ci_low, 10), " ",      # Lower CI (reduced spacing)
-        format_coef(ci_high, 10),          # Upper CI (ends at the "]")
-        "\n", sep = "")
+    # Get significance stars
+    stars <- bsig_stars(p_val)
+
+    cat(sprintf("%*s | %s  %s  %6.2f  %s %s  %s %s\n",
+                var_col_width, var_name,
+                bformat_num(coef_val, width = 10, digits = 5),
+                bformat_num(se_val, width = 9, digits = 5),
+                t_val,
+                p_str,
+                stars,
+                bformat_num(ci_low, width = 10, digits = 5),
+                bformat_num(ci_high, width = 10, digits = 5)))
   }
   cat(separator_line, "\n")
+  bprint_sig_legend()
 
   # Calculate VIF and Tolerance for predictors (exclude intercept)
-  if (k > 1) {  # Only if there are 2 or more predictors
+  if (vif && k > 1) {
     # Get the model matrix without intercept
     X <- model.matrix(model)[, -1, drop = FALSE]
 
@@ -273,29 +250,20 @@ bregress <- function(data, formula, robust = FALSE) {
     }
 
     # Print VIF/Tolerance table
-    cat("\n")
+    bprint_section("Variance Inflation Factors")
 
     # Create VIF table header with R-squared, Tolerance, VIF, and Sqrt(VIF)
     vif_header <- sprintf("%*s |    R-squared   Tolerance         VIF   Sqrt(VIF)",
                           var_col_width, "Variable")
     vif_table_width <- nchar(vif_header)
-    vif_separator <- paste0(rep("-", vif_table_width), collapse = "")
+    vif_separator <- strrep("-", vif_table_width)
 
     cat(vif_separator, "\n")
     cat(vif_header, "\n")
-    cat(paste0(paste0(rep("-", var_col_width), collapse = ""),
-               "+",
-               paste0(rep("-", vif_table_width - var_col_width - 1), collapse = "")), "\n")
+    cat(paste0(strrep("-", var_col_width), "+", strrep("-", vif_table_width - var_col_width - 1)), "\n")
 
     # Calculate R-squared values for display
-    r_squared_values <- numeric(k)
-    for (j in 1:k) {
-      if (k > 1) {
-        r_squared_values[j] <- 1 - tolerance_values[j]
-      } else {
-        r_squared_values[j] <- 0
-      }
-    }
+    r_squared_values <- 1 - tolerance_values
 
     # Print VIF values for each predictor
     for (j in 1:k) {
@@ -304,18 +272,12 @@ bregress <- function(data, formula, robust = FALSE) {
         var_name <- substr(var_name, 1, var_col_width)
       }
 
-      # Format all values
-      rsq_str <- sprintf("%10.4f", r_squared_values[j])
-      tol_str <- sprintf("%10.4f", tolerance_values[j])
-      vif_str <- sprintf("%10.2f", vif_values[j])
-      sqrt_vif_str <- sprintf("%10.4f", sqrt(vif_values[j]))
-
-      cat(sprintf("%*s", var_col_width, var_name), " | ",
-          rsq_str, "  ",
-          tol_str, "  ",
-          vif_str, "  ",
-          sqrt_vif_str,
-          "\n", sep = "")
+      cat(sprintf("%*s | %10.4f  %10.4f  %10.2f  %10.4f\n",
+                  var_col_width, var_name,
+                  r_squared_values[j],
+                  tolerance_values[j],
+                  vif_values[j],
+                  sqrt(vif_values[j])))
     }
 
     # Add mean VIF at the bottom
@@ -324,17 +286,22 @@ bregress <- function(data, formula, robust = FALSE) {
     mean_tol <- mean(tolerance_values)
     mean_sqrt_vif <- sqrt(mean_vif)
 
-    cat(paste0(paste0(rep("-", var_col_width), collapse = ""),
-               "+",
-               paste0(rep("-", vif_table_width - var_col_width - 1), collapse = "")), "\n")
-    cat(sprintf("%*s", var_col_width, "Mean"), " | ",
-        sprintf("%10.4f", mean_rsq), "  ",
-        sprintf("%10.4f", mean_tol), "  ",
-        sprintf("%10.2f", mean_vif), "  ",
-        sprintf("%10.4f", mean_sqrt_vif),
-        "\n", sep = "")
+    cat(paste0(strrep("-", var_col_width), "+", strrep("-", vif_table_width - var_col_width - 1)), "\n")
+    cat(sprintf("%*s | %10.4f  %10.4f  %10.2f  %10.4f\n",
+                var_col_width, "Mean",
+                mean_rsq, mean_tol, mean_vif, mean_sqrt_vif))
     cat(vif_separator, "\n")
+
+    # VIF interpretation guide
+    if (max(vif_values) > 10) {
+      cat("\nNote: VIF > 10 indicates potentially problematic multicollinearity\n")
+    } else if (max(vif_values) > 5) {
+      cat("\nNote: VIF > 5 may indicate moderate multicollinearity\n")
+    }
   }
+
+  cat("\n")
+
   # return calculated vars with NAs for cases with NA
   model$fitted.values <- fitted(model)
   model$residuals <- resid(model)

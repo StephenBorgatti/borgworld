@@ -1,4 +1,4 @@
-# ez_data
+# b_data.R - Data manipulation utilities
 
 #' Cut a numeric vector into k ordered groups via k-means
 #'
@@ -30,26 +30,33 @@ bautocut <- function(x, k = 3) {
   out
 }
 
+
 #' Clean data for borgworld analysis functions
 #'
 #' Removes rows with missing values and selects only numeric columns.
 #' This is a preprocessing utility used by various borgworld functions.
+#' This is a convenience wrapper around bprepare_data().
 #'
 #' @param data A data frame or matrix
+#' @param na_action How to handle missing values: "complete" (default) for listwise
+#'   deletion, "pairwise" for keeping all rows, "none" to keep all data
+#' @param verbose Print messages about cleaning (default FALSE)
+#'
 #' @return A data frame with only complete cases and numeric columns
-#' @importFrom tidyr drop_na
-#' @importFrom dplyr select where
+#'
+#' @examples
+#' # Clean data, removing non-numeric columns and rows with NAs
+#' bclean(iris)
+#'
 #' @export
-bclean <- function(data) {
-  # Convert matrix to data frame if needed
-  if (is.matrix(data)) {
-    data <- as.data.frame(data)
-  }
-
-  data |>
-    tidyr::drop_na() |>
-    dplyr::select(where(is.numeric))
+bclean <- function(data, na_action = "complete", verbose = FALSE) {
+  bprepare_data(data,
+                na_action = na_action,
+                numeric_only = TRUE,
+                output_format = "data.frame",
+                verbose = verbose)
 }
+
 
 #' Standardize columns of a data frame
 #'
@@ -62,13 +69,16 @@ bclean <- function(data) {
 #'   If TRUE, uses sample SD (divide by n-1, R's default).
 #' @param center Logical; if TRUE (default), centers the data by subtracting the mean.
 #'   If FALSE, only scales by the standard deviation.
+#' @param na_action How to handle missing values: "complete" (default) for listwise
+#'   deletion, "pairwise" for keeping all rows, "none" to keep all data
+#' @param verbose Print messages about cleaning (default FALSE)
 #'
 #' @return A data frame with standardized numeric columns
 #'
 #' @details
-#' This function first calls \code{bclean} to remove rows with NAs and select
-#' only numeric columns, then standardizes each column to have mean 0 and
-#' standard deviation 1.
+#' This function first cleans the data using bprepare_data() to remove rows with
+#' NAs and select only numeric columns, then standardizes each column to have
+#' mean 0 and standard deviation 1.
 #'
 #' The population standard deviation formula (default) divides by n, while
 #' the sample standard deviation divides by n-1. Most statistical software
@@ -81,7 +91,7 @@ bclean <- function(data) {
 #' data <- data.frame(
 #'   x = rnorm(100, mean = 10, sd = 2),
 #'   y = rnorm(100, mean = 50, sd = 10),
-#'   z = letters[1:100]  # Will be removed by bclean
+#'   z = letters[1:100]  # Will be removed automatically
 #' )
 #'
 #' # Standardize using population SD (default)
@@ -96,9 +106,14 @@ bclean <- function(data) {
 #'
 #' @importFrom stats sd
 #' @export
-bstandardize <- function(data, sample = FALSE, center = TRUE) {
-  # Clean the data first
-  data <- bclean(data)
+bstandardize <- function(data, sample = FALSE, center = TRUE,
+                         na_action = "complete", verbose = FALSE) {
+  # Clean the data first using standardized input handling
+  data <- bprepare_data(data,
+                        na_action = na_action,
+                        numeric_only = TRUE,
+                        output_format = "data.frame",
+                        verbose = verbose)
 
   # Check if any data remains
   if (nrow(data) == 0 || ncol(data) == 0) {
